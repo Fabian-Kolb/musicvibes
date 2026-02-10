@@ -27,12 +27,11 @@ canvas {
     width: 100%;
     height: 100%;
     background: rgba(0, 0, 0, 0.4);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
     opacity: 0;
-    transition: opacity 0.5s ease-in-out;
+    transition: opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1);
     pointer-events: none;
-    /* Allow clicks to pass through when hidden */
     display: flex;
     justify-content: center;
     align-items: center;
@@ -44,125 +43,181 @@ canvas {
     pointer-events: auto;
 }
 
-/* Settings Panel */
+/* Settings Panel - Premium Glassmorphism */
 .settings-panel {
-    background: rgba(20, 20, 20, 0.8);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 20px;
-    padding: 30px;
-    width: 800px;
-    /* Wide panel */
-    max-width: 90%;
-    box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+    background: rgba(20, 20, 20, 0.65);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    /* Top highlight */
+    border-radius: 24px;
+    padding: 40px;
+    width: 900px;
+    max-width: 95%;
+    box-shadow:
+        0 20px 50px rgba(0, 0, 0, 0.5),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.05);
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 20px;
+    gap: 30px 40px;
+    /* Row gap, Col gap */
     color: #fff;
-    font-family: 'Inter', sans-serif;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    backdrop-filter: blur(40px);
+    -webkit-backdrop-filter: blur(40px);
+    opacity: 0;
+    transform: translateY(20px) scale(0.98);
+    transition: all 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.ghost-ui-overlay.visible .settings-panel {
+    opacity: 1;
+    transform: translateY(0) scale(1);
 }
 
 .section-title {
-    font-size: 0.9rem;
+    font-size: 0.75rem;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 1px;
-    color: rgba(255, 255, 255, 0.6);
-    margin-bottom: 10px;
+    letter-spacing: 2px;
+    color: rgba(255, 255, 255, 0.4);
+    margin-bottom: 12px;
     grid-column: span 2;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    padding-bottom: 8px;
 }
 
 .section-half {
     grid-column: span 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
 }
 
 .section-full {
     grid-column: span 2;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
 }
 
-/* Controls */
+/* Typography */
+label {
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.8);
+    font-weight: 500;
+    display: flex;
+    justify-content: space-between;
+}
+
+/* Controls - Buttons */
 button.vs-btn {
-    background: rgba(255, 255, 255, 0.1);
-    border: none;
-    border-radius: 8px;
-    color: #fff;
-    padding: 10px 15px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    color: rgba(255, 255, 255, 0.7);
+    padding: 12px 20px;
     cursor: pointer;
-    transition: all 0.2s;
-    font-size: 0.9rem;
-    margin-right: 10px;
+    transition: all 0.3s ease;
+    font-size: 0.85rem;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
 }
 
 button.vs-btn:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.2);
     transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
 }
 
 button.vs-btn.active {
     background: #fff;
     color: #000;
-    box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+    border-color: #fff;
+    box-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+    font-weight: 600;
 }
 
 /* Exit Button */
 .exit-btn {
     position: absolute;
-    top: 20px;
-    right: 20px;
-    background: transparent;
-    border: none;
-    color: rgba(255, 255, 255, 0.7);
+    top: 30px;
+    right: 30px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 50%;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255, 255, 255, 0.8);
     cursor: pointer;
-    transition: color 0.3s;
+    transition: all 0.3s ease;
     z-index: 20;
+    backdrop-filter: blur(10px);
 }
 
 .exit-btn:hover {
-    color: #fff;
-    transform: scale(1.1);
+    background: rgba(255, 255, 255, 1);
+    color: #000;
+    transform: rotate(90deg);
 }
 
-/* Sliders */
+/* Custom Range Sliders */
 input[type="range"] {
     width: 100%;
     appearance: none;
     -webkit-appearance: none;
     background: rgba(255, 255, 255, 0.1);
-    height: 6px;
-    border-radius: 3px;
+    height: 4px;
+    border-radius: 2px;
     outline: none;
+    cursor: pointer;
 }
 
 input[type="range"]::-webkit-slider-thumb {
     -webkit-appearance: none;
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
     border-radius: 50%;
     background: #fff;
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
     cursor: pointer;
-    transition: transform 0.2s;
+    transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+    border: 2px solid rgba(20, 20, 20, 0.5);
+    /* Inner cutout effect */
 }
 
 input[type="range"]::-webkit-slider-thumb:hover {
-    transform: scale(1.2);
+    transform: scale(1.3);
+    background: #fff;
 }
 
 /* Color Inputs */
 .color-swatches {
     display: flex;
-    gap: 10px;
-    margin-top: 10px;
+    gap: 12px;
+    margin-top: 5px;
 }
 
 input[type="color"] {
     appearance: none;
     -webkit-appearance: none;
     border: none;
-    width: 40px;
-    height: 40px;
+    width: 36px;
+    height: 36px;
     border-radius: 50%;
     cursor: pointer;
-    overflow: hidden;
     padding: 0;
     background: none;
+    transition: transform 0.2s;
+}
+
+input[type="color"]:hover {
+    transform: scale(1.1);
 }
 
 input[type="color"]::-webkit-color-swatch-wrapper {
@@ -170,6 +225,7 @@ input[type="color"]::-webkit-color-swatch-wrapper {
 }
 
 input[type="color"]::-webkit-color-swatch {
-    border: 2px solid rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.3);
     border-radius: 50%;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
 }

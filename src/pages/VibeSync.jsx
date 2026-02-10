@@ -7,11 +7,30 @@ const VibeSync = () => {
     const [showUI, setShowUI] = useState(false);
     const [audioStream, setAudioStream] = useState(null);
     const [mode, setMode] = useState('liquid'); // liquid, quake, neon
-    const [settings, setSettings] = useState({
-        symmetry: false,
-        speed: 1.0,
-        trails: 0.1, // 0 to 1
-        sensitivity: 1.5, // 0.5 to 2.5
+
+    // Per-Mode Settings
+    const [modeSettings, setModeSettings] = useState({
+        liquid: {
+            speed: 0, // 0 = Normal (1x)
+            sensitivity: 0, // 0 = Normal (1.5x)
+            baseRadius: 0, // 0 = Normal (1.0x)
+            bgColor: '#240024',
+            shrinkSpeed: 0, // 0 = Normal (0.1)
+            particleCount: 0, // 0 = Normal (1x)
+            strobeThreshold: 0, // 0 = Normal
+            strobeSpeed: 0, // 0 = Normal
+            symmetry: false
+        },
+        quake: {
+            speed: 1.0,
+            sensitivity: 1.5,
+            symmetry: false
+        },
+        neon: {
+            speed: 1.0,
+            sensitivity: 1.5,
+            trails: 0.1
+        }
     });
 
     // Custom Color State - Initialize with a preset (Cyberpunk)
@@ -19,18 +38,35 @@ const VibeSync = () => {
         '#ff00ff', '#00ffff', '#0000ff', '#ff0000', '#800080'
     ]);
 
+    const [isHoveringPanel, setIsHoveringPanel] = useState(false);
     const uiTimeoutRef = useRef(null);
+
+    const resetTimeout = useCallback((delay = 1000) => {
+        if (uiTimeoutRef.current) clearTimeout(uiTimeoutRef.current);
+        uiTimeoutRef.current = setTimeout(() => {
+            setShowUI(false);
+        }, delay);
+    }, []);
 
     // Ghost UI Handler
     const handleMouseMove = useCallback(() => {
         setShowUI(true);
-        if (uiTimeoutRef.current) {
-            clearTimeout(uiTimeoutRef.current);
+        if (!isHoveringPanel) {
+            resetTimeout(1000); // 1s timeout if outside panel
+        } else {
+            if (uiTimeoutRef.current) clearTimeout(uiTimeoutRef.current); // Stay open if inside
         }
-        uiTimeoutRef.current = setTimeout(() => {
-            setShowUI(false);
-        }, 3000);
+    }, [isHoveringPanel, resetTimeout]);
+
+    const handlePanelEnter = useCallback(() => {
+        setIsHoveringPanel(true);
+        if (uiTimeoutRef.current) clearTimeout(uiTimeoutRef.current);
     }, []);
+
+    const handlePanelLeave = useCallback(() => {
+        setIsHoveringPanel(false);
+        resetTimeout(1000); // 1s timeout on leave
+    }, [resetTimeout]);
 
     useEffect(() => {
         window.addEventListener('mousemove', handleMouseMove);
@@ -45,7 +81,7 @@ const VibeSync = () => {
             <Visualizer
                 audioStream={audioStream}
                 mode={mode}
-                settings={settings}
+                settings={modeSettings[mode]} // Pass only active mode settings
                 colors={colors}
             />
             <GhostUI
@@ -54,10 +90,12 @@ const VibeSync = () => {
                 setAudioStream={setAudioStream}
                 mode={mode}
                 setMode={setMode}
-                settings={settings}
-                setSettings={setSettings}
+                modeSettings={modeSettings}
+                setModeSettings={setModeSettings}
                 colors={colors}
                 setColors={setColors}
+                onPanelEnter={handlePanelEnter}
+                onPanelLeave={handlePanelLeave}
             />
         </div>
     );

@@ -9,7 +9,7 @@ const PRESETS = {
     matrix: ['#00ff00', '#003300', '#001100', '#33ff33', '#008800'],
 };
 
-const GhostUI = ({ show, audioStream, setAudioStream, mode, setMode, settings, setSettings, colors, setColors }) => {
+const GhostUI = ({ show, audioStream, setAudioStream, mode, setMode, modeSettings, setModeSettings, colors, setColors, onPanelEnter, onPanelLeave }) => {
     const navigate = useNavigate();
 
     const handleAudioInput = async (type) => {
@@ -39,13 +39,30 @@ const GhostUI = ({ show, audioStream, setAudioStream, mode, setMode, settings, s
         setColors(newColors);
     };
 
+    const updateSetting = (key, value) => {
+        setModeSettings(prev => ({
+            ...prev,
+            [mode]: {
+                ...prev[mode],
+                [key]: value
+            }
+        }));
+    };
+
+    const currentSettings = modeSettings[mode];
+
     return (
         <div className={`ghost-ui-overlay ${show ? 'visible' : ''}`}>
-            <button className="exit-btn" onClick={() => navigate('/')}>
+            {/* Exit Button - Stop propagation to prevent triggering mousemove logic on container? No, click is fine. */}
+            <button className="exit-btn" onClick={(e) => { e.stopPropagation(); navigate('/'); }}>
                 <X size={32} />
             </button>
 
-            <div className="settings-panel">
+            <div
+                className="settings-panel"
+                onMouseEnter={onPanelEnter}
+                onMouseLeave={onPanelLeave}
+            >
                 {/* Audio Input */}
                 <div className="section-title">Audio Source</div>
                 <div className="section-full">
@@ -61,25 +78,76 @@ const GhostUI = ({ show, audioStream, setAudioStream, mode, setMode, settings, s
                     <button className={`vs-btn ${mode === 'neon' ? 'active' : ''}`} onClick={() => setMode('neon')}><Zap size={16} style={{ marginRight: 8 }} /> Neon Storm</button>
                 </div>
 
-                {/* Global Modifiers */}
-                <div className="section-title">Modifiers</div>
+                {/* Mode Specific Settings */}
+                <div className="section-title">
+                    {mode === 'liquid' ? 'Liquid Morph Settings' : mode === 'quake' ? 'Bass Quake Settings' : 'Neon Storm Settings'}
+                </div>
+
+                {/* Common Settings */}
+                {/* Common Settings (remapped for Liquid, kept standard for others for now or handled in visualizer?) 
+                   Actually, user said "Änder so das man alle Variablen von -10 bis 10 verändern kann". 
+                   This likely applies specifically to the current focus (Liquid). 
+                   But let's apply the UI changes for Liquid mode mainly or check if other modes break.
+                   Other modes (Quake, Neon) use speed/sensitivity too. I should probably keep the sliders generic but map them differently?
+                   Or just update the sliders and fix the mapping for ALL modes?
+                   User context was "Liquid Morph UI". I will update the sliders only when Liquid is active or update global sliders and fix mapping for others?
+                   Let's stick to Liquid specific section for the specific requests, but Speed/Sensitivity are shared.
+                   I will update Speed/Sensitivity to be -10 to 10 globally and fix mapping for other modes to keep them working.
+                */}
+
+                <div className="section-half">
+                    <label>Beat Impact (Sensitivity): {currentSettings.sensitivity}</label>
+                    <input type="range" min="-10" max="10" step="1" value={currentSettings.sensitivity} onChange={(e) => updateSetting('sensitivity', parseFloat(e.target.value))} />
+                </div>
+                <div className="section-half">
+                    <label>Motion Speed: {currentSettings.speed}</label>
+                    <input type="range" min="-10" max="10" step="1" value={currentSettings.speed} onChange={(e) => updateSetting('speed', parseFloat(e.target.value))} />
+                </div>
+
+                {/* Liquid Specific */}
+                {mode === 'liquid' && (
+                    <>
+                        <div className="section-half">
+                            <label>Particle Size: {currentSettings.baseRadius}</label>
+                            <input type="range" min="-10" max="10" step="1" value={currentSettings.baseRadius} onChange={(e) => updateSetting('baseRadius', parseFloat(e.target.value))} />
+                        </div>
+                        <div className="section-half">
+                            <label>Decay Speed (Snappiness): {currentSettings.shrinkSpeed}</label>
+                            <input type="range" min="-10" max="10" step="1" value={currentSettings.shrinkSpeed} onChange={(e) => updateSetting('shrinkSpeed', parseFloat(e.target.value))} />
+                        </div>
+                        <div className="section-half">
+                            <label>Particle Amount: {currentSettings.particleCount}</label>
+                            <input type="range" min="-10" max="10" step="1" value={currentSettings.particleCount} onChange={(e) => updateSetting('particleCount', parseInt(e.target.value))} />
+                        </div>
+                        <div className="section-half">
+                            <label>Background Tint</label>
+                            <input type="color" value={currentSettings.bgColor} onChange={(e) => updateSetting('bgColor', e.target.value)} style={{ width: '100%', height: '36px' }} />
+                        </div>
+                        <div className="section-half">
+                            <label>Strobe Trigger: {currentSettings.strobeThreshold}</label>
+                            <input type="range" min="-10" max="10" step="1" value={currentSettings.strobeThreshold || 0} onChange={(e) => updateSetting('strobeThreshold', parseInt(e.target.value))} />
+                        </div>
+                        <div className="section-half">
+                            <label>Strobe Speed: {currentSettings.strobeSpeed}</label>
+                            <input type="range" min="-10" max="10" step="1" value={currentSettings.strobeSpeed || 0} onChange={(e) => updateSetting('strobeSpeed', parseInt(e.target.value))} />
+                        </div>
+                    </>
+                )}
+
+                {/* Neon Specific */}
+                {mode === 'neon' && (
+                    <div className="section-half">
+                        <label>Trails: {currentSettings.trails}</label>
+                        <input type="range" min="0" max="0.95" step="0.05" value={currentSettings.trails} onChange={(e) => updateSetting('trails', parseFloat(e.target.value))} />
+                    </div>
+                )}
+
+                {/* Symmetry (Common but optional) */}
                 <div className="section-half">
                     <label>Symmetry Mode</label>
-                    <button className={`vs-btn ${settings.symmetry ? 'active' : ''}`} onClick={() => setSettings(prev => ({ ...prev, symmetry: !prev.symmetry }))}>
-                        {settings.symmetry ? 'ON' : 'OFF'}
+                    <button className={`vs-btn ${currentSettings.symmetry ? 'active' : ''}`} onClick={() => updateSetting('symmetry', !currentSettings.symmetry)}>
+                        {currentSettings.symmetry ? 'ON' : 'OFF'}
                     </button>
-                </div>
-                <div className="section-half">
-                    <label>Speed: {settings.speed}x</label>
-                    <input type="range" min="0.1" max="3.0" step="0.1" value={settings.speed} onChange={(e) => setSettings(prev => ({ ...prev, speed: parseFloat(e.target.value) }))} />
-                </div>
-                <div className="section-half">
-                    <label>Trails: {settings.trails}</label>
-                    <input type="range" min="0" max="0.95" step="0.05" value={settings.trails} onChange={(e) => setSettings(prev => ({ ...prev, trails: parseFloat(e.target.value) }))} />
-                </div>
-                <div className="section-half">
-                    <label>Sensitivity: {settings.sensitivity}x</label>
-                    <input type="range" min="0.5" max="2.5" step="0.1" value={settings.sensitivity} onChange={(e) => setSettings(prev => ({ ...prev, sensitivity: parseFloat(e.target.value) }))} />
                 </div>
 
                 {/* Colors */}

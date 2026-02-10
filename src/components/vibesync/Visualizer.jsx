@@ -11,21 +11,80 @@ const Visualizer = ({ audioStream, mode, settings, colors }) => {
 
     // State for visualizer physics
     const timeRef = useRef(0);
-    const particlesRef = useRef([]);
 
-    useEffect(() => {
-        // Initialize particles for Liquid mode
-        particlesRef.current = Array.from({ length: 15 }).map(() => ({
-            x: Math.random(),
-            y: Math.random(),
-            vx: (Math.random() - 0.5) * 0.01,
-            vy: (Math.random() - 0.5) * 0.01,
-            radius: Math.random() * 200 + 100,
-            colorIndex: Math.floor(Math.random() * 5),
+    const particlesRef = useRef([]);
+    const avgVolumeRef = useRef(0); // Track average volume for particle count
+
+    // Helper to spawn a new particle off-screen
+    const spawnParticle = (width, height, isOffScreen = false) => {
+        // If isOffScreen is true, we spawn strictly outside the visible area.
+        // Otherwise (initial setup), we spawn randomly inside.
+
+        let x, y;
+        const margin = 0.2; // 20% margin outside screen
+
+        if (isOffScreen) {
+            // Spawn on one of the 4 sides randomly
+            const side = Math.floor(Math.random() * 4);
+            if (side === 0) { // Top
+                x = Math.random();
+                y = -margin;
+            } else if (side === 1) { // Right
+                x = 1 + margin;
+                y = Math.random();
+            } else if (side === 2) { // Bottom
+                x = Math.random();
+                y = 1 + margin;
+            } else { // Left
+                x = -margin;
+                y = Math.random();
+            }
+        } else {
+            x = Math.random();
+            y = Math.random();
+        }
+
+        // Velocity towards center (roughly)
+        // Vector from (x,y) to (0.5, 0.5)
+        const dx = 0.5 - x;
+        const dy = 0.5 - y;
+        const angle = Math.atan2(dy, dx) + (Math.random() - 0.5); // Add randomness
+        const velocity = 0.001 + Math.random() * 0.002;
+
+        return {
+            x,
+            y,
+            vx: Math.cos(angle) * velocity,
+            vy: Math.sin(angle) * velocity,
+            baseRadius: (0.3 + Math.random() * 0.2), // Fixed base size, scaled by settings in render loop
+            colorIndex: Math.floor(Math.random() * colors.length),
             noiseOffsetX: Math.random() * 1000,
             noiseOffsetY: Math.random() * 1000,
-        }));
+            toRemove: false,
+            life: 0
+        };
+    };
+
+    useEffect(() => {
+        // Initial Population - Start with few
+        particlesRef.current = Array.from({ length: 5 }).map(() => spawnParticle(1, 1, false));
     }, []);
+
+    useEffect(() => {
+        if (analyserRef.current && settings.shrinkSpeed !== undefined) {
+            // Dynamic Smoothing: 
+            // -10 (Slow) -> 0.99 (Very smooth)
+            // 0 (Normal) -> 0.9 (Standard)
+            // 10 (Fast) -> 0.3 (Raw)
+
+            const val = settings.shrinkSpeed || 0;
+            let target = 0.9;
+            if (val > 0) target = 0.9 - ((0.9 - 0.3) * (val / 10)); // 0->10 maps to 0.9->0.3
+            else target = 0.9 + ((0.99 - 0.9) * (Math.abs(val) / 10)); // 0->-10 maps to 0.9->0.99
+
+            analyserRef.current.smoothingTimeConstant = target;
+        }
+    }, [settings.shrinkSpeed]);
 
     // Audio Setup
     useEffect(() => {
@@ -33,14 +92,11 @@ const Visualizer = ({ audioStream, mode, settings, colors }) => {
 
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         const analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 256; // 128 bins
-        const source = audioCtx.createMediaStreamSource(audioStream);
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.9; // Default start
 
+        const source = audioCtx.createMediaStreamSource(audioStream);
         source.connect(analyser);
-        // Note: Do not connect to destination (speakers) to avoid feedback loop if mic is used.
-        // However, if system audio is captured, we might want to hear it? 
-        // Usually for visualizers of mic, we don't connect. For system audio, we might need to if the user hears it otherwise. 
-        // In 'getDisplayMedia', the user hears it from the system, so we just tap into it.
 
         audioContextRef.current = audioCtx;
         analyserRef.current = analyser;
@@ -57,25 +113,27 @@ const Visualizer = ({ audioStream, mode, settings, colors }) => {
     useEffect(() => {
         const canvas = canvasRef.current;
         if (!canvas) return;
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { alpha: false });
 
         const render = () => {
             const { width, height } = canvas;
+            const minDim = Math.min(width, height);
 
             // Audio Data
             let frequencyData = new Uint8Array(0);
-            let bass = 0, mid = 0, treble = 0;
-            let volume = 0;
+            let bass = 0, mid = 0, treble = 0; // 0-255
+            let volume = 0; // 0-255
+
+            // Need current colors for spawn logic reference, passing via closure might be stale if not careful?
+            // Actually colors prop update triggers re-effect, so render loop restarts with new colors. Correct.
 
             if (analyserRef.current) {
                 frequencyData = new Uint8Array(analyserRef.current.frequencyBinCount);
                 analyserRef.current.getByteFrequencyData(frequencyData);
 
-                // Calculate bands
                 const bassEnd = Math.floor(frequencyData.length * 0.1);
                 const midEnd = Math.floor(frequencyData.length * 0.5);
 
-                // Simple average for bands
                 let bassSum = 0, midSum = 0, trebleSum = 0;
                 for (let i = 0; i < frequencyData.length; i++) {
                     if (i < bassEnd) bassSum += frequencyData[i];
@@ -89,89 +147,255 @@ const Visualizer = ({ audioStream, mode, settings, colors }) => {
                 volume = (bass + mid + treble) / 3;
             }
 
-            // Apply modifiers
+            // Timing
             const speed = settings.speed;
-            timeRef.current += 0.005 * speed + (volume / 255) * 0.01;
+            const isKick = bass > 210; // Slightly higher threshold
 
-            // Clear or Trail
-            ctx.globalCompositeOperation = 'source-over';
-            if (settings.trails > 0) {
-                ctx.fillStyle = `rgba(0, 0, 0, ${1 - settings.trails})`;
-                ctx.fillRect(0, 0, width, height);
-            } else {
-                ctx.clearRect(0, 0, width, height);
-            }
+            timeRef.current += 0.002 * speed + (volume / 255) * 0.005;
 
-            // Symmetry Setup
-            ctx.save();
-            if (settings.symmetry) {
-                ctx.translate(width / 2, height / 2);
-                // We will draw potentially 4 quadrants or just mirror.
-                // Let's do a simple mirror: draw left half, mirror to right.
-                // Actually, easiest is to draw everything, but with a kaleidoscope clip?
-                // Simpler: Draw, then copy? No.
-                // Let's render everything relative to center (0,0) instead of (0,0) being top-left.
-                // For simplicity in this loop, I'll stick to full canvas drawing but mirror logic in coordinates if needed.
-                // Or transform the context to mirror.
-            }
+            // --- VISUALIZATION LOGIC ---
 
-            // Visualization Modes
             if (mode === 'liquid') {
-                ctx.globalCompositeOperation = 'hard-light'; // or screen, overlay
+                // 1. Layering Fix: Clear / Fade
+                ctx.globalCompositeOperation = 'source-over';
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+                ctx.fillRect(0, 0, width, height);
 
-                particlesRef.current.forEach((p, i) => {
-                    // Noise movement
-                    const noiseX = noise3D(p.noiseOffsetX, timeRef.current * 0.5, 0);
-                    const noiseY = noise3D(p.noiseOffsetY, timeRef.current * 0.5, 100);
+                // 2. Background Atmosphere ("The Room")
+                // Reactive to Volume + Mids + Highs.
+                // Formula: Power curve to keep it dark at low volumes, bright at drops.
 
-                    let x = (p.x + noiseX * 0.4) * width;
-                    let y = (p.y + noiseY * 0.4) * height;
+                // Calculate "Energy" of the room (0-1)
+                const energy = ((mid / 255) * 0.5 + (treble / 255) * 0.5);
+                // Apply curve: energy^1.5 or energy^2 to make it steeper
+                // Also factor in overall volume to ensure silence = black
+                const volumeFactor = (volume / 255);
 
-                    // Symmetry Override
-                    if (settings.symmetry) {
-                        // If symmetry, map points to a kaleidoscope pattern? 
-                        // Or just mirror the drawing.
-                        // Let's keep it simple: if symmetry, we duplicate the draw calls.
-                        // See below loop logic
+                const atmosOpacity = Math.pow(energy * volumeFactor, 1.5) * 0.8; // Max 0.8 transparency
+
+                if (atmosOpacity > 0.01) {
+                    ctx.fillStyle = settings.bgColor || colors[0];
+                    ctx.globalAlpha = atmosOpacity;
+                    ctx.fillRect(0, 0, width, height);
+                    ctx.globalAlpha = 1.0;
+                }
+
+                // 3. Dynamic Population & Blobs (Foreground)
+                // Set composite to screen for glowing blobs
+                ctx.globalCompositeOperation = 'screen';
+                ctx.filter = 'blur(80px)'; // Deep blur for blobs
+
+                // Mapping Helper
+                const mapSetting = (val, base, min, max) => {
+                    if (val === 0) return base;
+                    if (val > 0) return base + ((max - base) * (val / 10));
+                    return base - ((base - min) * (Math.abs(val) / 10));
+                };
+
+                const valSpeed = settings.speed || 0;
+                const valCount = settings.particleCount || 0;
+                const valSens = settings.sensitivity || 0;
+                const valShrink = settings.shrinkSpeed || 0;
+                const valRadius = settings.baseRadius || 0;
+                const valStrobeThresh = settings.strobeThreshold || 0;
+                const valStrobeSpeed = settings.strobeSpeed || 0;
+
+                // --- TUNED MAPPINGS (More Influence) ---
+
+                // 1. Speed: 0->1x. 10->20x (Was 10x). -10->0.05x (Almost frozen).
+                const mappedSpeedMultiplier = mapSetting(valSpeed, 1.0, 0.05, 20.0);
+
+                // 2. Count: 0->1x. 10->5x (Was 3x). -10->0.1x (Very sparse).
+                const mappedCountMultiplier = mapSetting(valCount, 1.0, 0.1, 5.0);
+
+                // 3. Sensitivity: 0->1.5. 10->5.0 (Was 3.0). -10->0.1 (No reaction).
+                const mappedSens = mapSetting(valSens, 1.5, 0.1, 5.0);
+
+                // 4. Shrink/Decay: 0->0.1. 10->2.0 (Instant). -10->0.001 (No decay).
+                const mappedShrink = mapSetting(valShrink, 0.1, 0.001, 2.0);
+
+                // 5. Radius: 0->1.0. 10->5.0 (Huge). -10->0.1 (Tiny).
+                const mappedRadius = mapSetting(valRadius, 1.0, 0.1, 5.0);
+
+                // 6. Strobe Mappings
+                // Threshold: Volume (0-1) to trigger. 
+                // 0 -> 0.7 (Loudish).
+                // 10 -> 0.3 (Triggers constantly).
+                // -10 -> 0.95 (Only max peaks).
+                // Note: Logic inverted for UI feel? "More Strobe" (10) should trigger easier? Yes.
+                // 10 -> Lower threshold. -10 -> Higher threshold.
+                const mappedStrobeThresh = 0.7 - (valStrobeThresh * 0.035);
+
+                // Speed: Filter frequency.
+                // 0 -> 30hz? 
+                // 10 -> 80hz.
+                // -10 -> 5hz.
+                const mappedStrobeSpeed = 30 + (valStrobeSpeed * 2.5);
+
+                // Map smoothness: Update average volume slowly (e.g. 5% per frame)
+                // This ensures particle count reflects "Loudness" rather than "Transients"
+                avgVolumeRef.current = (avgVolumeRef.current * 0.95) + (volume * 0.05);
+
+                // Map average volume 0-255 to 5-20 blobs
+                const targetCount = (5 + Math.floor((avgVolumeRef.current / 255) * 15)) * mappedCountMultiplier;
+                const activeParticles = particlesRef.current.filter(p => !p.toRemove);
+
+
+
+                // Spawn
+                if (activeParticles.length < targetCount) {
+                    // 5% chance to spawn per frame to avoid instant flooding
+                    if (Math.random() < 0.05) {
+                        particlesRef.current.push(spawnParticle(width, height, true));
+                    }
+                }
+                // Despawn
+                else if (activeParticles.length > targetCount) {
+                    // Mark random excess for removal
+                    if (Math.random() < 0.05) {
+                        // Find a particle not yet marked
+                        const candidates = particlesRef.current.filter(p => !p.toRemove);
+                        if (candidates.length > 0) {
+                            candidates[0].toRemove = true;
+                        }
+                    }
+                }
+
+                // Cleanup loop
+                for (let i = particlesRef.current.length - 1; i >= 0; i--) {
+                    const p = particlesRef.current[i];
+
+                    // Movement dynamic logic
+                    // User Request: Loud = Fast, Quiet = Slow. Slider = Strength.
+
+                    // Base movement (always moving a little) + Volume influence
+                    // settings.speed acts as the "Strength" multiplier
+                    const volRatio = volume / 255;
+
+                    // Power curve for speed setting already handled by huge max range (10x)
+                    // We just use linear mapping for the multiplier now as 10x is plenty fast.
+
+                    const dynamicSpeed = (0.2 + (volRatio * 5.0)) * mappedSpeedMultiplier;
+
+                    const noiseX = noise3D(p.noiseOffsetX, timeRef.current, 0);
+                    const noiseY = noise3D(p.noiseOffsetY, timeRef.current, 100);
+
+                    // Apply dynamic speed to both velocity vector and noise drift
+                    p.x += (p.vx + noiseX * 0.002) * dynamicSpeed;
+                    p.y += (p.vy + noiseY * 0.002) * dynamicSpeed;
+
+                    // Removal Check
+                    if (p.toRemove) {
+                        // If off screen (with margin for radius), remove
+                        // Radius max is ~0.5 (relative).
+                        if (p.x < -0.6 || p.x > 1.6 || p.y < -0.6 || p.y > 1.6) {
+                            particlesRef.current.splice(i, 1);
+                            continue;
+                        }
+                    } else {
+                        // Keep inside bounds if not removing? 
+                        // Or wrap? "Spawn outside" implies they cross the screen.
+                        // If they cross and go out the other side, we can just remove them and spawn new ones.
+                        // This creates flow.
+                        if (p.x < -0.6 || p.x > 1.6 || p.y < -0.6 || p.y > 1.6) {
+                            particlesRef.current.splice(i, 1);
+                            continue;
+                        }
                     }
 
-                    // Radius reacts to bass/mid
-                    const r = p.radius * (1 + (bass / 255) * settings.sensitivity * 1.5);
+                    // -- Draw with Pulse Decay --
 
-                    const gradient = ctx.createRadialGradient(x, y, 0, x, y, r);
-                    const color = colors[p.colorIndex % colors.length];
-                    // color is hex, need rgba.
-                    // basic hex straight in gradient works.
+                    // -- Draw with Pulse Decay --
+
+                    // Current Instant Impact (Aggressive Bass Focus)
+                    const targetImpact = (bass * 0.95) + (mid * 0.05); // 0-255 scaling
+                    let targetVolFactor = targetImpact / 255; // 0-1
+
+                    // Noise Gate: Ignore small fluctuations to prevent "fluttering"
+                    if (targetVolFactor < 0.15) targetVolFactor = 0;
+
+                    // Smooth Decay Logic with "Snappiness"
+                    if (typeof p.currentImpact === 'undefined') p.currentImpact = 0;
+
+                    // Slider controls the "Speed" of change (0.01 to 0.3)
+                    // Attack (Growth) Speed: Faster than decay to feel responsive (e.g., 3x)
+                    // But capped to prevent instant snapping "glitch" look
+                    const attackSpeed = mappedShrink * 3.0;
+                    const decaySpeed = mappedShrink;
+
+                    if (targetVolFactor > p.currentImpact) {
+                        // Grow towards target
+                        p.currentImpact += attackSpeed;
+                        if (p.currentImpact > targetVolFactor) p.currentImpact = targetVolFactor;
+                    } else {
+                        // Shrink towards target (Decay)
+                        p.currentImpact -= decaySpeed;
+                        if (p.currentImpact < targetVolFactor) p.currentImpact = targetVolFactor;
+                    }
+
+                    // Apply Power Curve for internal contrast (Small stay small, Big get HUGE)
+                    // Raising to power of 3 makes the difference between 0.5 and 1.0 much larger.
+                    const dynamicFactor = Math.pow(p.currentImpact, 3);
+
+                    // Size Scaling
+                    // Base size + (dynamic boost * sensitivity)
+                    // We increase the multiplier to compensate for the power curve reducing values < 1
+                    const sizeFactor = 1 + (dynamicFactor * mappedSens * 2.0);
+
+                    const finalR = p.baseRadius * mappedRadius * minDim * sizeFactor;
+                    const x = p.x * width;
+                    const y = p.y * height;
+
+                    // Gradient for blob
+                    let color = colors[p.colorIndex % colors.length];
+
+                    // --- Strobe Effect ---
+                    // Toggle black if volume > threshold AND flicker time
+                    // Math.sin uses radians. timeRef increments by ~0.01 per frame.
+                    // speed ~30-50.
+
+
+                    if (volRatio > mappedStrobeThresh) {
+                        // Flashing interval
+                        if (Math.sin(timeRef.current * mappedStrobeSpeed) > 0) {
+                            color = '#000000'; // Black
+                        }
+                    }
+
+                    const gradient = ctx.createRadialGradient(x, y, 0, x, y, finalR);
+
                     gradient.addColorStop(0, color);
+                    gradient.addColorStop(0.6, color);
                     gradient.addColorStop(1, 'rgba(0,0,0,0)');
 
                     ctx.fillStyle = gradient;
                     ctx.beginPath();
-                    ctx.arc(x, y, r, 0, Math.PI * 2);
+                    ctx.arc(x, y, finalR, 0, Math.PI * 2);
                     ctx.fill();
 
-                    // Mirror if symmetry
+                    // Symmetry (Manual Mirror)
                     if (settings.symmetry) {
-                        ctx.fillStyle = gradient; // Re-use (simplified)
-                        // Mirror X
-                        ctx.save();
-                        ctx.scale(-1, 1);
-                        // Coordinate space is now flipped. 0,0 is top-left usually. 
-                        // For symmetry to work well with top-left origin, we need to translate.
+                        const mx = width - x;
+                        const mGradient = ctx.createRadialGradient(mx, y, 0, mx, y, finalR);
+                        mGradient.addColorStop(0, color);
+                        mGradient.addColorStop(0.6, color);
+                        mGradient.addColorStop(1, 'rgba(0,0,0,0)');
+                        ctx.fillStyle = mGradient;
+                        ctx.beginPath();
+                        ctx.arc(mx, y, finalR, 0, Math.PI * 2);
+                        ctx.fill();
                     }
-                });
-
-                // Extra Symmetry handling manually for better control
-                if (settings.symmetry) {
-                    // This is hard to do efficiently with "clearing trails".
-                    // If trails are on, we are drawing over existing pixels.
-                    // A true mirror would copy one half to the other.
-                    // Let's skip complex symmetry for logic simplicity in this constrained environment,
-                    // OR do a simple context flip before drawing everything.
                 }
 
+                // Reset filter for next frame/other operations if necessary. 
+                // Though typical for canvas to reset.
+                ctx.filter = 'none';
+
             } else if (mode === 'quake') {
+                ctx.clearRect(0, 0, width, height); // Simple clear
+                ctx.filter = 'none';
                 ctx.globalCompositeOperation = 'source-over';
+
                 const cx = width / 2;
                 const cy = height / 2;
 
@@ -194,8 +418,13 @@ const Visualizer = ({ audioStream, mode, settings, colors }) => {
                 }
 
             } else if (mode === 'neon') {
+                // Trail effect for Neon
+                ctx.filter = 'blur(2px)';
+                ctx.globalCompositeOperation = 'source-over';
+                ctx.fillStyle = `rgba(0, 0, 0, ${1 - settings.trails})`;
+                ctx.fillRect(0, 0, width, height);
+
                 ctx.globalCompositeOperation = 'screen';
-                // Draw lines based on frequency data
                 const barWidth = width / frequencyData.length;
 
                 ctx.beginPath();
@@ -203,39 +432,29 @@ const Visualizer = ({ audioStream, mode, settings, colors }) => {
                     const v = frequencyData[i];
                     const h = (v / 255) * height * settings.sensitivity;
                     const x = i * barWidth;
-                    const y = height - h; // Audio visualizer bars style?
-                    // Or lightning style?
 
-                    // Let's do "Storm": Lines connecting random points jittering with audio
-                    if (i % 10 === 0) {
+                    if (i % 8 === 0) {
+                        ctx.beginPath();
                         ctx.moveTo(x, height / 2);
-                        ctx.lineTo(x, height / 2 - (v * settings.sensitivity));
+                        ctx.lineTo(x + (Math.random() - 0.5) * 20, height / 2 - (h / 2));
+                        ctx.lineTo(x, height / 2 - h);
+
                         ctx.strokeStyle = colors[i % colors.length];
-                        ctx.lineWidth = 2;
+                        ctx.lineWidth = 3;
+                        ctx.stroke();
                     }
                 }
-                ctx.stroke();
-            }
-
-            ctx.restore(); // Restore symmetry transform if any (not fully implemented above, but good practice)
-
-            if (settings.symmetry) {
-                // Post-processing symmetry: Copy Left to Right
-                // This is expensive (getImageData), skipping for performance.
-                // Better to draw twice with scale(-1, 1) and translate(width, 0).
-                // Let's try to just implement the double-draw logic inside Liquid loop for best effect.
             }
 
             requestRef.current = requestAnimationFrame(render);
         };
 
-        // Handle Resize
         const handleResize = () => {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
         };
         window.addEventListener('resize', handleResize);
-        handleResize(); // Initial size
+        handleResize();
 
         requestRef.current = requestAnimationFrame(render);
 
