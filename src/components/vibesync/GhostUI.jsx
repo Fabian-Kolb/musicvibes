@@ -62,6 +62,7 @@ const GhostUI = ({ show, audioStream, setAudioStream, mode, setMode, modeSetting
                 className="settings-panel"
                 onMouseEnter={onPanelEnter}
                 onMouseLeave={onPanelLeave}
+                style={{ maxHeight: '80vh', overflowY: 'auto' }}
             >
                 {/* Audio Input */}
                 <div className="section-title">Audio Source</div>
@@ -95,52 +96,150 @@ const GhostUI = ({ show, audioStream, setAudioStream, mode, setMode, modeSetting
                    I will update Speed/Sensitivity to be -10 to 10 globally and fix mapping for other modes to keep them working.
                 */}
 
-                <div className="section-half">
-                    <label>Beat Impact (Sensitivity): {currentSettings.sensitivity}</label>
-                    <input type="range" min="-10" max="10" step="1" value={currentSettings.sensitivity} onChange={(e) => updateSetting('sensitivity', parseFloat(e.target.value))} />
-                </div>
-                <div className="section-half">
-                    <label>Motion Speed: {currentSettings.speed}</label>
-                    <input type="range" min="-10" max="10" step="1" value={currentSettings.speed} onChange={(e) => updateSetting('speed', parseFloat(e.target.value))} />
-                </div>
+                {/* Dynamic Grid Layout for Settings */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '10px' }}>
 
-                {/* Liquid Specific */}
-                {mode === 'liquid' && (
-                    <>
-                        <div className="section-half">
-                            <label>Particle Size: {currentSettings.baseRadius}</label>
-                            <input type="range" min="-10" max="10" step="1" value={currentSettings.baseRadius} onChange={(e) => updateSetting('baseRadius', parseFloat(e.target.value))} />
-                        </div>
-                        <div className="section-half">
-                            <label>Decay Speed (Snappiness): {currentSettings.shrinkSpeed}</label>
-                            <input type="range" min="-10" max="10" step="1" value={currentSettings.shrinkSpeed} onChange={(e) => updateSetting('shrinkSpeed', parseFloat(e.target.value))} />
-                        </div>
-                        <div className="section-half">
-                            <label>Particle Amount: {currentSettings.particleCount}</label>
-                            <input type="range" min="-10" max="10" step="1" value={currentSettings.particleCount} onChange={(e) => updateSetting('particleCount', parseInt(e.target.value))} />
-                        </div>
-                        <div className="section-half">
-                            <label>Background Tint</label>
-                            <input type="color" value={currentSettings.bgColor} onChange={(e) => updateSetting('bgColor', e.target.value)} style={{ width: '100%', height: '36px' }} />
-                        </div>
-                        <div className="section-half">
-                            <label>Strobe Trigger: {currentSettings.strobeThreshold}</label>
-                            <input type="range" min="-10" max="10" step="1" value={currentSettings.strobeThreshold || 0} onChange={(e) => updateSetting('strobeThreshold', parseInt(e.target.value))} />
-                        </div>
-                        <div className="section-half">
-                            <label>Strobe Speed: {currentSettings.strobeSpeed}</label>
-                            <input type="range" min="-10" max="10" step="1" value={currentSettings.strobeSpeed || 0} onChange={(e) => updateSetting('strobeSpeed', parseInt(e.target.value))} />
-                        </div>
-                    </>
-                )}
-
-                {/* Neon Specific */}
-                {mode === 'neon' && (
-                    <div className="section-half">
-                        <label>Trails: {currentSettings.trails}</label>
-                        <input type="range" min="0" max="0.95" step="0.05" value={currentSettings.trails} onChange={(e) => updateSetting('trails', parseFloat(e.target.value))} />
+                    {/* Common / shared */}
+                    <div>
+                        <label>Beat Impact: {currentSettings.sensitivity}</label>
+                        <input type="range" min="-10" max="10" step="1" value={currentSettings.sensitivity} onChange={(e) => updateSetting('sensitivity', parseFloat(e.target.value))} />
                     </div>
-                )}
+                    <div>
+                        <label>Motion Speed: {currentSettings.speed}</label>
+                        <input type="range" min="-10" max="10" step="1" value={currentSettings.speed} onChange={(e) => updateSetting('speed', parseFloat(e.target.value))} />
+                    </div>
+
+                    {/* Liquid Specific */}
+                    {mode === 'liquid' && (
+                        <>
+                            {/* Frequency Controls - Span 2 cols */}
+                            <div style={{ gridColumn: 'span 2', background: 'rgba(255,255,255,0.05)', padding: '8px', borderRadius: '8px' }}>
+                                <div style={{ fontSize: '0.8rem', marginBottom: '4px', opacity: 0.8 }}>Frequency Impact</div>
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                    <div style={{ flex: 1 }}>
+                                        <label style={{ fontSize: '10px' }}>Low: {currentSettings.bassImpact || 0}</label>
+                                        <input type="range" min="-10" max="10" step="1" value={currentSettings.bassImpact || 0} onChange={(e) => updateSetting('bassImpact', parseInt(e.target.value))} style={{ width: '100%' }} />
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                        <label style={{ fontSize: '10px' }}>Mid: {currentSettings.midImpact || 0}</label>
+                                        <input type="range" min="-10" max="10" step="1" value={currentSettings.midImpact || 0} onChange={(e) => updateSetting('midImpact', parseInt(e.target.value))} style={{ width: '100%' }} />
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                        <label style={{ fontSize: '10px' }}>High: {currentSettings.trebleImpact || 0}</label>
+                                        <input type="range" min="-10" max="10" step="1" value={currentSettings.trebleImpact || 0} onChange={(e) => updateSetting('trebleImpact', parseInt(e.target.value))} style={{ width: '100%' }} />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label>Size: {currentSettings.baseRadius}</label>
+                                <input type="range" min="-10" max="10" step="1" value={currentSettings.baseRadius} onChange={(e) => updateSetting('baseRadius', parseFloat(e.target.value))} />
+                            </div>
+                            <div>
+                                <label>Decay: {currentSettings.shrinkSpeed}</label>
+                                <input type="range" min="-10" max="10" step="1" value={currentSettings.shrinkSpeed} onChange={(e) => updateSetting('shrinkSpeed', parseFloat(e.target.value))} />
+                            </div>
+                            <div>
+                                <label>Count: {currentSettings.particleCount}</label>
+                                <input type="range" min="-10" max="10" step="1" value={currentSettings.particleCount} onChange={(e) => updateSetting('particleCount', parseInt(e.target.value))} />
+                            </div>
+                            <div>
+                                <label>Strobe Level: {currentSettings.strobeThreshold}</label>
+                                <input type="range" min="-10" max="10" step="1" value={currentSettings.strobeThreshold || 0} onChange={(e) => updateSetting('strobeThreshold', parseInt(e.target.value))} />
+                            </div>
+                            <div>
+                                <label>Strobe Spd: {currentSettings.strobeSpeed}</label>
+                                <input type="range" min="-10" max="10" step="1" value={currentSettings.strobeSpeed || 0} onChange={(e) => updateSetting('strobeSpeed', parseInt(e.target.value))} />
+                            </div>
+                            <div>
+                                <label>Bg Tint</label>
+                                <input type="color" value={currentSettings.bgColor} onChange={(e) => updateSetting('bgColor', e.target.value)} style={{ width: '100%', height: '30px' }} />
+                            </div>
+                        </>
+                    )}
+
+                    {/* Neon Specific */}
+                    {mode === 'neon' && (
+                        <>
+                            {/* Intensity Controls */}
+                            <div style={{ gridColumn: 'span 2', background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '12px' }}>
+                                <div style={{ fontSize: '0.9rem', marginBottom: '8px', fontWeight: 'bold' }}>Physics (Layer B)</div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                                    <div>
+                                        <label>Shake: {currentSettings.shakeScale}%</label>
+                                        <input type="range" min="0" max="100" step="1" value={currentSettings.shakeScale} onChange={(e) => updateSetting('shakeScale', parseInt(e.target.value))} />
+                                    </div>
+                                    <div>
+                                        <label>Wind Reactivity: {currentSettings.windReactivity}%</label>
+                                        <input type="range" min="0" max="100" step="1" value={currentSettings.windReactivity} onChange={(e) => updateSetting('windReactivity', parseInt(e.target.value))} />
+                                    </div>
+                                    <div style={{ gridColumn: 'span 2' }}>
+                                        <label>Smoothness (Decay): {currentSettings.smoothness}%</label>
+                                        <input type="range" min="0" max="100" step="1" value={currentSettings.smoothness} onChange={(e) => updateSetting('smoothness', parseInt(e.target.value))} />
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', opacity: 0.5, marginTop: 4 }}>
+                                            <span>Hard / Snappy</span>
+                                            <span>Soft / Fat</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Atmosphere Controls */}
+                            <div style={{ gridColumn: 'span 2', background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '12px' }}>
+                                <div style={{ fontSize: '0.9rem', marginBottom: '8px', fontWeight: 'bold' }}>Atmosphere (Layer A)</div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                                    <div>
+                                        <label>Base Rain: {currentSettings.rainAmount}%</label>
+                                        <input type="range" min="0" max="100" step="1" value={currentSettings.rainAmount} onChange={(e) => updateSetting('rainAmount', parseInt(e.target.value))} />
+                                    </div>
+                                    <div>
+                                        <label>Base Wind: {currentSettings.baseWind}%</label>
+                                        <input type="range" min="0" max="100" step="1" value={currentSettings.baseWind} onChange={(e) => updateSetting('baseWind', parseInt(e.target.value))} />
+                                    </div>
+                                    <div>
+                                        <label>Cloud Density: {currentSettings.cloudDensity}%</label>
+                                        <input type="range" min="0" max="100" step="1" value={currentSettings.cloudDensity} onChange={(e) => updateSetting('cloudDensity', parseInt(e.target.value))} />
+                                    </div>
+                                    <div>
+                                        <label>Lightning Sensitivity: {currentSettings.sensitivity}%</label>
+                                        <input type="range" min="0" max="100" step="1" value={currentSettings.sensitivity} onChange={(e) => updateSetting('sensitivity', parseInt(e.target.value))} />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Toggles */}
+                            <div style={{ gridColumn: 'span 2', display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                                <button className={`vs-btn ${currentSettings.lensDroplets ? 'active' : ''}`} onClick={() => updateSetting('lensDroplets', !currentSettings.lensDroplets)}>
+                                    Wet Lens
+                                </button>
+                                <button className={`vs-btn ${currentSettings.lightningFlash ? 'active' : ''}`} onClick={() => updateSetting('lightningFlash', !currentSettings.lightningFlash)}>
+                                    Flash Sync
+                                </button>
+                                <button className={`vs-btn ${currentSettings.floorFog ? 'active' : ''}`} onClick={() => updateSetting('floorFog', !currentSettings.floorFog)}>
+                                    Floor Fog
+                                </button>
+                                <button className={`vs-btn ${currentSettings.retinalBurn ? 'active' : ''}`} onClick={() => updateSetting('retinalBurn', !currentSettings.retinalBurn)}>
+                                    Retinal Burn
+                                </button>
+                                <button className={`vs-btn ${currentSettings.autoCycle ? 'active' : ''}`} onClick={() => updateSetting('autoCycle', !currentSettings.autoCycle)}>
+                                    Auto Cycle
+                                </button>
+                            </div>
+
+                            {!currentSettings.autoCycle ? (
+                                <div style={{ gridColumn: 'span 2' }}>
+                                    <label>Manual Theme Hue</label>
+                                    <input type="range" min="0" max="360" step="1" value={currentSettings.manualHue} onChange={(e) => updateSetting('manualHue', parseInt(e.target.value))} />
+                                </div>
+                            ) : (
+                                <div style={{ gridColumn: 'span 2' }}>
+                                    <label>Color Shift Speed: {currentSettings.colorShiftSpeed}%</label>
+                                    <input type="range" min="0" max="100" step="1" value={currentSettings.colorShiftSpeed} onChange={(e) => updateSetting('colorShiftSpeed', parseInt(e.target.value))} />
+                                </div>
+                            )}
+                        </>
+                    )}
+                </div>
 
                 {/* Symmetry (Common but optional) */}
                 <div className="section-half">

@@ -13,7 +13,16 @@ const Visualizer = ({ audioStream, mode, settings, colors }) => {
     const timeRef = useRef(0);
 
     const particlesRef = useRef([]);
-    const avgVolumeRef = useRef(0); // Track average volume for particle count
+    const itemsRef = useRef([]); // Unused?
+    const rainRef = useRef([]); // Rain particles
+    const lightningRef = useRef([]); // Active lightning bolts
+    const lensDropletsRef = useRef([]); // Screen-space water
+    const zoomRef = useRef(1.0); // Camera FOV
+    const glitchRef = useRef(0); // Glitch frames remaining
+    const avgVolumeRef = useRef(0);
+    const avgBassRef = useRef(0);
+    const avgMidRef = useRef(0);
+    const avgTrebleRef = useRef(0);
 
     // Helper to spawn a new particle off-screen
     const spawnParticle = (width, height, isOffScreen = false) => {
@@ -131,7 +140,7 @@ const Visualizer = ({ audioStream, mode, settings, colors }) => {
                 frequencyData = new Uint8Array(analyserRef.current.frequencyBinCount);
                 analyserRef.current.getByteFrequencyData(frequencyData);
 
-                const bassEnd = Math.floor(frequencyData.length * 0.1);
+                const bassEnd = Math.floor(frequencyData.length * 0.15); // Widen bass range (was 0.1)
                 const midEnd = Math.floor(frequencyData.length * 0.5);
 
                 let bassSum = 0, midSum = 0, trebleSum = 0;
@@ -145,11 +154,15 @@ const Visualizer = ({ audioStream, mode, settings, colors }) => {
                 mid = (midSum / (midEnd - bassEnd)) || 0;
                 treble = (trebleSum / (frequencyData.length - midEnd)) || 0;
                 volume = (bass + mid + treble) / 3;
+
+                // Update Running Averages for Transient Detection
+                avgBassRef.current = (avgBassRef.current * 0.9) + (bass * 0.1);
+                avgMidRef.current = (avgMidRef.current * 0.9) + (mid * 0.1);
+                avgTrebleRef.current = (avgTrebleRef.current * 0.9) + (treble * 0.1);
             }
 
             // Timing
             const speed = settings.speed;
-            const isKick = bass > 210; // Slightly higher threshold
 
             timeRef.current += 0.002 * speed + (volume / 255) * 0.005;
 
@@ -163,15 +176,9 @@ const Visualizer = ({ audioStream, mode, settings, colors }) => {
 
                 // 2. Background Atmosphere ("The Room")
                 // Reactive to Volume + Mids + Highs.
-                // Formula: Power curve to keep it dark at low volumes, bright at drops.
-
-                // Calculate "Energy" of the room (0-1)
                 const energy = ((mid / 255) * 0.5 + (treble / 255) * 0.5);
-                // Apply curve: energy^1.5 or energy^2 to make it steeper
-                // Also factor in overall volume to ensure silence = black
                 const volumeFactor = (volume / 255);
-
-                const atmosOpacity = Math.pow(energy * volumeFactor, 1.5) * 0.8; // Max 0.8 transparency
+                const atmosOpacity = Math.pow(energy * volumeFactor, 1.5) * 0.8;
 
                 if (atmosOpacity > 0.01) {
                     ctx.fillStyle = settings.bgColor || colors[0];
@@ -181,9 +188,8 @@ const Visualizer = ({ audioStream, mode, settings, colors }) => {
                 }
 
                 // 3. Dynamic Population & Blobs (Foreground)
-                // Set composite to screen for glowing blobs
                 ctx.globalCompositeOperation = 'screen';
-                ctx.filter = 'blur(80px)'; // Deep blur for blobs
+                ctx.filter = 'blur(80px)';
 
                 // Mapping Helper
                 const mapSetting = (val, base, min, max) => {
@@ -200,37 +206,25 @@ const Visualizer = ({ audioStream, mode, settings, colors }) => {
                 const valStrobeThresh = settings.strobeThreshold || 0;
                 const valStrobeSpeed = settings.strobeSpeed || 0;
 
+                // Frequency Weights (New)
+                const valBassImp = settings.bassImpact || 0;
+                const valMidImp = settings.midImpact || 0;
+                const valTrebleImp = settings.trebleImpact || 0;
+
                 // --- TUNED MAPPINGS (More Influence) ---
-
-                // 1. Speed: 0->1x. 10->20x (Was 10x). -10->0.05x (Almost frozen).
                 const mappedSpeedMultiplier = mapSetting(valSpeed, 1.0, 0.05, 20.0);
-
-                // 2. Count: 0->1x. 10->5x (Was 3x). -10->0.1x (Very sparse).
                 const mappedCountMultiplier = mapSetting(valCount, 1.0, 0.1, 5.0);
-
-                // 3. Sensitivity: 0->1.5. 10->5.0 (Was 3.0). -10->0.1 (No reaction).
                 const mappedSens = mapSetting(valSens, 1.5, 0.1, 5.0);
-
-                // 4. Shrink/Decay: 0->0.1. 10->2.0 (Instant). -10->0.001 (No decay).
                 const mappedShrink = mapSetting(valShrink, 0.1, 0.001, 2.0);
-
-                // 5. Radius: 0->1.0. 10->5.0 (Huge). -10->0.1 (Tiny).
                 const mappedRadius = mapSetting(valRadius, 1.0, 0.1, 5.0);
-
-                // 6. Strobe Mappings
-                // Threshold: Volume (0-1) to trigger. 
-                // 0 -> 0.7 (Loudish).
-                // 10 -> 0.3 (Triggers constantly).
-                // -10 -> 0.95 (Only max peaks).
-                // Note: Logic inverted for UI feel? "More Strobe" (10) should trigger easier? Yes.
-                // 10 -> Lower threshold. -10 -> Higher threshold.
                 const mappedStrobeThresh = 0.7 - (valStrobeThresh * 0.035);
-
-                // Speed: Filter frequency.
-                // 0 -> 30hz? 
-                // 10 -> 80hz.
-                // -10 -> 5hz.
                 const mappedStrobeSpeed = 30 + (valStrobeSpeed * 2.5);
+
+                // 7. Frequency Impact Mappings (User Request: Distinct controls)
+                // -10 -> 0x (Off), 0 -> 1x (Standard), 10 -> 6x (High Gain on Transients)
+                const mappedBassImp = mapSetting(valBassImp, 1.0, 0.0, 6.0);
+                const mappedMidImp = mapSetting(valMidImp, 0.5, 0.0, 6.0);
+                const mappedTrebleImp = mapSetting(valTrebleImp, 0.2, 0.0, 6.0);
 
                 // Map smoothness: Update average volume slowly (e.g. 5% per frame)
                 // This ensures particle count reflects "Loudness" rather than "Transients"
@@ -307,12 +301,29 @@ const Visualizer = ({ audioStream, mode, settings, colors }) => {
 
                     // -- Draw with Pulse Decay --
 
-                    // Current Instant Impact (Aggressive Bass Focus)
-                    const targetImpact = (bass * 0.95) + (mid * 0.05); // 0-255 scaling
-                    let targetVolFactor = targetImpact / 255; // 0-1
+                    // -- Draw with Pulse Decay --
+
+                    // Current Instant Impact (Custom Frequency Focus)
+                    // Logic: Transient Detection (Beat) rather than raw Volume
+                    // This prevents "Static Huge" size when sliders are maxed.
+                    // We look for parts of the signal that stand out above the running average.
+
+                    // Normalized Transients (0-1 range roughly)
+                    const bassT = Math.max(0, (bass - avgBassRef.current * 0.8) / 255);
+                    const midT = Math.max(0, (mid - avgMidRef.current * 0.8) / 255);
+                    const trebleT = Math.max(0, (treble - avgTrebleRef.current * 0.8) / 255);
+
+                    // Weighted Sum
+                    let weightedSum = (bassT * mappedBassImp) + (midT * mappedMidImp) + (trebleT * mappedTrebleImp);
+
+                    // Clamp to 0-1 range (or slightly higher for overdrive)
+                    // If everything is maxed, we want it to be huge, but only on beats.
+                    // Transients are usually small (0.1 - 0.3), so multiplying by 6.0 gives 0.6 - 1.8. 
+                    const targetVolFactor = Math.min(1.2, weightedSum);
 
                     // Noise Gate: Ignore small fluctuations to prevent "fluttering"
-                    if (targetVolFactor < 0.15) targetVolFactor = 0;
+                    // If factor is tiny, kill it.
+                    if (targetVolFactor < 0.05) { /* Do nothing or treat as 0? No, let decay handle it. */ }
 
                     // Smooth Decay Logic with "Snappiness"
                     if (typeof p.currentImpact === 'undefined') p.currentImpact = 0;
@@ -418,32 +429,261 @@ const Visualizer = ({ audioStream, mode, settings, colors }) => {
                 }
 
             } else if (mode === 'neon') {
-                // Trail effect for Neon
-                ctx.filter = 'blur(2px)';
-                ctx.globalCompositeOperation = 'source-over';
-                ctx.fillStyle = `rgba(0, 0, 0, ${1 - settings.trails})`;
-                ctx.fillRect(0, 0, width, height);
+                // --- CINEMATIC STORM (LAYERED ARCHITECTURE) ---
 
-                ctx.globalCompositeOperation = 'screen';
-                const barWidth = width / frequencyData.length;
+                // 1. Precise Audio Extraction & Reaction (Layer B Smoothing)
+                // Smoothness: 0 (Hard/Snappy) -> 100 (Soft/Fat)
+                const smoothing = 0.4 + (settings.smoothness / 100) * 0.58;
+                if (analyserRef.current.smoothingTimeConstant !== smoothing) {
+                    analyserRef.current.smoothingTimeConstant = smoothing;
+                }
 
-                ctx.beginPath();
-                for (let i = 0; i < frequencyData.length; i++) {
-                    const v = frequencyData[i];
-                    const h = (v / 255) * height * settings.sensitivity;
-                    const x = i * barWidth;
+                let subBass = 0, kickBass = 0, lowMid = 0, highTreble = 0;
+                if (analyserRef.current) {
+                    const binCount = frequencyData.length;
+                    const subEnd = Math.floor(binCount * 0.05);
+                    const kickEnd = Math.floor(binCount * 0.15);
+                    const midEnd = Math.floor(binCount * 0.5);
 
-                    if (i % 8 === 0) {
-                        ctx.beginPath();
-                        ctx.moveTo(x, height / 2);
-                        ctx.lineTo(x + (Math.random() - 0.5) * 20, height / 2 - (h / 2));
-                        ctx.lineTo(x, height / 2 - h);
+                    let subSum = 0, kickSum = 0, midSum = 0, trebleSum = 0;
+                    for (let i = 0; i < binCount; i++) {
+                        if (i < subEnd) subSum += frequencyData[i];
+                        else if (i < kickEnd) kickSum += frequencyData[i];
+                        else if (i < midEnd) midSum += frequencyData[i];
+                        else trebleSum += frequencyData[i];
+                    }
 
-                        ctx.strokeStyle = colors[i % colors.length];
-                        ctx.lineWidth = 3;
-                        ctx.stroke();
+                    subBass = Math.pow((subSum / subEnd) / 255, 4);
+                    kickBass = Math.pow((kickSum / (kickEnd - subEnd)) / 255, 4);
+                    lowMid = Math.pow((midSum / (midEnd - kickEnd)) / 255, 3);
+                    highTreble = Math.pow((trebleSum / (binCount - midEnd)) / 255, 3);
+                }
+
+                if (!itemsRef.current.lastTreble) itemsRef.current.lastTreble = 0;
+                const trebleDelta = highTreble - itemsRef.current.lastTreble;
+                itemsRef.current.lastTreble = highTreble;
+
+                // --- LAYER A: AUTONOMOUS NATURE ---
+                if (typeof zoomRef.current === 'undefined') zoomRef.current = 1.0;
+                const targetZoom = 1.0 + (lowMid * 0.1) - (kickBass * 0.05);
+                zoomRef.current += (targetZoom - zoomRef.current) * 0.1;
+
+                // Handheld Drift (Autonomous Camera)
+                const driftX = noise3D(0, timeRef.current * 0.1, 100) * 12;
+                const driftY = noise3D(100, timeRef.current * 0.1, 200) * 8;
+                const driftRot = noise3D(200, timeRef.current * 0.05, 300) * 0.008;
+
+                ctx.save();
+                ctx.translate(width / 2 + driftX, height / 2 + driftY);
+                ctx.rotate(driftRot);
+                ctx.scale(zoomRef.current, zoomRef.current);
+                ctx.translate(-width / 2, -height / 2);
+
+                // --- LAYER B: AUDIO MODULATION (SCALABLE IMPACT) ---
+                if (kickBass > 0.05) {
+                    const s = kickBass * (settings.shakeScale / 5);
+                    ctx.translate((Math.random() - 0.5) * s, (Math.random() - 0.5) * s);
+                }
+
+                // 3. Environment: Clouds & Retinal Burn
+                if (typeof itemsRef.current.cloudGlow === 'undefined') itemsRef.current.cloudGlow = 0;
+                if (settings.retinalBurn) itemsRef.current.cloudGlow *= 0.93;
+                else itemsRef.current.cloudGlow = 0;
+
+                // Atmospheric Breathing (Autonomous)
+                const breathing = Math.sin(timeRef.current * 0.4) * 4;
+
+                // Color Management (Autonomous Cycle + Audio Modulation)
+                if (typeof itemsRef.current.hueCycle === 'undefined') itemsRef.current.hueCycle = 0;
+                if (settings.autoCycle) {
+                    itemsRef.current.hueCycle += (settings.colorShiftSpeed / 50); // Autonomous shift
+                }
+
+                let activeHue = settings.autoCycle ?
+                    (itemsRef.current.hueCycle + (kickBass * 30)) % 360 :
+                    settings.manualHue;
+
+                const skyR = 5 + (itemsRef.current.cloudGlow * 15) + breathing;
+                const skyG = 5 + (itemsRef.current.cloudGlow * 35) + breathing + (activeHue * 0.1);
+                const skyB = 15 + (itemsRef.current.cloudGlow * 50) + breathing + (activeHue * 0.2);
+
+                const bgGrad = ctx.createLinearGradient(0, 0, 0, height);
+                bgGrad.addColorStop(0, `rgb(${skyR}, ${skyG}, ${skyB})`);
+                bgGrad.addColorStop(1, '#000');
+                ctx.fillStyle = bgGrad;
+                ctx.fillRect(-500, -500, width + 1000, height + 1000);
+
+                const bloomPumping = 1.0 + (kickBass * 0.5);
+
+                // Clouds (Autonomous Motion Layer A)
+                const cloudTime = timeRef.current * 0.2;
+                const cloudCount = Math.floor(8 + (settings.cloudDensity / 12));
+                for (let i = 0; i < cloudCount; i++) {
+                    const nVal = noise3D(i * 0.8, cloudTime * 0.1, 0);
+                    const x = (i / cloudCount) * width + (nVal * 200);
+                    const y = height * 0.15 + noise3D(i * 0.8, cloudTime * 0.2, 10) * 120;
+                    const innerGlow = itemsRef.current.cloudGlow * 150;
+                    const size = (300 + nVal * 150) * bloomPumping;
+                    const cx = x % (width + 600) - 300;
+
+                    const grad = ctx.createRadialGradient(cx, y, 0, cx, y, size);
+                    // Sample color from activeHue
+                    grad.addColorStop(0, `hsla(${activeHue}, 80%, ${30 + itemsRef.current.cloudGlow * 40}%, 0.6)`);
+                    grad.addColorStop(0.5, `hsla(${activeHue}, 60%, 15%, 0.3)`);
+                    grad.addColorStop(1, 'rgba(0,0,0,0)');
+
+                    ctx.fillStyle = grad;
+                    ctx.beginPath();
+                    ctx.arc(cx, y, size, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // 4. Fog (Layer A/B Hybrid)
+                if (settings.floorFog) {
+                    const fogDensity = (0.1 + lowMid * 0.4) * bloomPumping;
+                    const fogGrad = ctx.createLinearGradient(0, height * 0.6, 0, height);
+                    fogGrad.addColorStop(0, 'rgba(0,0,0,0)');
+                    fogGrad.addColorStop(1, `hsla(${activeHue}, 50%, 20%, ${fogDensity})`);
+                    ctx.fillStyle = fogGrad;
+                    ctx.fillRect(-200, height * 0.6, width + 400, height * 0.4);
+                }
+
+                // 5. Rain & Turbulence (Layer A Base + Layer B Modulation)
+                if (!rainRef.current) rainRef.current = [];
+                if (!itemsRef.current.splashes) itemsRef.current.splashes = [];
+
+                // Wind: Base Slant (A) + Reactive Peitschen (B)
+                const windX = -(settings.baseWind / 4) - (subBass * (settings.windReactivity / 1.5));
+
+                // Intensity: Base Rain (A) + Audio Growth (B)
+                const rainBase = settings.rainAmount / 5;
+                const rainIntensity = rainBase + (lowMid * 40 * (settings.rainAmount / 50));
+
+                if (rainRef.current.length < (settings.rainAmount * 25)) {
+                    for (let k = 0; k < Math.floor(rainIntensity); k++) {
+                        rainRef.current.push({
+                            x: Math.random() * (width + 1200) - 600,
+                            y: -100,
+                            l: Math.random() * 20 + 30,
+                            v: Math.random() * 10 + 20 + (kickBass * 40),
+                            seed: Math.random() * 1000
+                        });
                     }
                 }
+
+                ctx.strokeStyle = `hsla(${activeHue}, 60%, 80%, ${0.2 + kickBass * 0.5})`;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                for (let i = rainRef.current.length - 1; i >= 0; i--) {
+                    const r = rainRef.current[i];
+                    r.y += r.v;
+                    const turbulence = Math.sin(r.y * 0.01 + r.seed) * 3;
+                    r.x += windX + turbulence;
+
+                    ctx.moveTo(r.x, r.y);
+                    ctx.lineTo(r.x + (windX + turbulence) * 0.6, r.y + r.l);
+
+                    if (r.y > height - 10) {
+                        if (Math.random() < 0.25) {
+                            itemsRef.current.splashes.push({
+                                x: r.x, y: height - 5,
+                                vx: (Math.random() - 0.5) * 8, vy: -Math.random() * 6 - 2, life: 1.0
+                            });
+                        }
+                        rainRef.current.splice(i, 1);
+                    }
+                }
+                ctx.stroke();
+
+                // Splashes
+                ctx.fillStyle = `hsla(${activeHue}, 50%, 90%, 0.6)`;
+                for (let i = itemsRef.current.splashes.length - 1; i >= 0; i--) {
+                    const s = itemsRef.current.splashes[i];
+                    s.x += s.vx; s.y += s.vy; s.vy += 0.8; s.life -= 0.12;
+                    if (s.life <= 0) { itemsRef.current.splashes.splice(i, 1); continue; }
+                    ctx.beginPath();
+                    ctx.arc(s.x, s.y, 1.5 * s.life, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // 6. Lightning (Sensitivty Layer B)
+                if (!lightningRef.current) lightningRef.current = [];
+                const lSensitivity = 1.1 - (settings.sensitivity / 100);
+
+                if (lightningRef.current.length === 0 && trebleDelta > (0.02 * lSensitivity) && Math.random() < 0.3) {
+                    const startX = Math.random() * width;
+                    const bolt = { life: 1.0, segments: [], x: startX };
+                    let curX = startX, curY = 0;
+                    while (curY < height) {
+                        const nextX = curX + (Math.random() - 0.5) * 350;
+                        const nextY = curY + Math.random() * 150 + 50;
+                        bolt.segments.push({ x: curX, y: curY, nx: nextX, ny: nextY });
+                        curX = nextX; curY = nextY;
+                    }
+                    lightningRef.current.push(bolt);
+                    itemsRef.current.cloudGlow = 1.2;
+                    if (trebleDelta > 0.08) glitchRef.current = 4;
+
+                    // Respect Lightning Flash toggle
+                    if (settings.lightningFlash) {
+                        ctx.fillStyle = `rgba(255, 255, 255, ${0.4 + highTreble * 0.5})`;
+                        ctx.fillRect(-500, -500, width + 1000, height + 1000);
+                    }
+                }
+
+                // Render Bolts
+                for (let i = lightningRef.current.length - 1; i >= 0; i--) {
+                    const bolt = lightningRef.current[i];
+                    ctx.shadowBlur = 50 * bolt.life * bloomPumping;
+                    ctx.shadowColor = `hsla(${activeHue}, 100%, 80%, 1)`;
+                    ctx.strokeStyle = `hsla(${activeHue}, 50%, 95%, ${bolt.life})`;
+                    ctx.lineWidth = 4 + bolt.life * 8;
+                    ctx.beginPath();
+                    bolt.segments.forEach(seg => { ctx.moveTo(seg.x, seg.y); ctx.lineTo(seg.nx, seg.ny); });
+                    ctx.stroke();
+                    bolt.life -= 0.1;
+                    if (bolt.life <= 0) lightningRef.current.splice(i, 1);
+                }
+                ctx.shadowBlur = 0;
+
+                // 7. WET LENS (Modular layer)
+                if (settings.lensDroplets) {
+                    if (!lensDropletsRef.current) lensDropletsRef.current = [];
+                    if ((subBass > 0.2 || highTreble > 0.2) && Math.random() < 0.1) {
+                        lensDropletsRef.current.push({
+                            x: Math.random() * width, y: Math.random() * height,
+                            r: Math.random() * 5 + 3, opacity: 0.8,
+                            vx: (Math.random() - 0.5) * 0.5, vy: Math.random() * 2 + 1
+                        });
+                    }
+
+                    ctx.restore(); ctx.save(); // Screen space
+                    for (let i = lensDropletsRef.current.length - 1; i >= 0; i--) {
+                        const d = lensDropletsRef.current[i];
+                        d.y += d.vy; d.x += d.vx + (kickBass * (Math.random() - 0.5) * 5); d.opacity -= 0.005;
+                        if (d.y > height + 20 || d.opacity <= 0) { lensDropletsRef.current.splice(i, 1); continue; }
+
+                        ctx.beginPath();
+                        const dropGrad = ctx.createRadialGradient(d.x, d.y, 0, d.x, d.y, d.r);
+                        dropGrad.addColorStop(0, `rgba(255, 255, 255, ${d.opacity * 0.4})`);
+                        dropGrad.addColorStop(1, 'rgba(0,0,0,0)');
+                        ctx.fillStyle = dropGrad;
+                        ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2); ctx.fill();
+                    }
+                }
+
+                // 8. GLITCH Artifacts
+                if (glitchRef.current > 0) {
+                    glitchRef.current--;
+                    for (let g = 0; g < 3; g++) {
+                        const sy = Math.random() * height;
+                        const sh = Math.random() * 100 + 20;
+                        const offset = (Math.random() - 0.5) * 100;
+                        ctx.drawImage(canvas, 0, sy, width, sh, offset, sy, width, sh);
+                    }
+                }
+
+                ctx.restore();
             }
 
             requestRef.current = requestAnimationFrame(render);

@@ -19,6 +19,9 @@ const VibeSync = () => {
             particleCount: 0, // 0 = Normal (1x)
             strobeThreshold: 0, // 0 = Normal
             strobeSpeed: 0, // 0 = Normal
+            bassImpact: 0, // 0 = Normal (1x)
+            midImpact: 0, // 0 = Normal (1x)
+            trebleImpact: 0, // 0 = Normal (1x)
             symmetry: false
         },
         quake: {
@@ -27,9 +30,21 @@ const VibeSync = () => {
             symmetry: false
         },
         neon: {
-            speed: 1.0,
-            sensitivity: 1.5,
-            trails: 0.1
+            speed: 5.0,
+            sensitivity: 40, // 0-100 range for sensitivity
+            shakeScale: 50,
+            baseWind: 20,
+            windReactivity: 50,
+            smoothness: 80, // 0-100 (Snappy to Fat)
+            cloudDensity: 50,
+            rainAmount: 30, // Current base rain
+            lightningFlash: true,
+            lensDroplets: false,
+            floorFog: true,
+            retinalBurn: true,
+            autoCycle: true,
+            manualHue: 200,
+            colorShiftSpeed: 20
         }
     });
 
