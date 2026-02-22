@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Mic, Radio, X, Monitor, Music, Zap, Activity, Waves } from 'lucide-react';
+import { Mic, Radio, X, Monitor, Music, Zap, Activity, Waves, Sliders, Palette, Zap as LightningIcon, Droplets } from 'lucide-react';
 
 const PRESETS = {
     cyberpunk: ['#ff00ff', '#00ffff', '#1a0b2e', '#ff0055', '#7000ff'],
@@ -53,7 +53,6 @@ const GhostUI = ({ show, audioStream, setAudioStream, mode, setMode, modeSetting
 
     return (
         <div className={`ghost-ui-overlay ${show ? 'visible' : ''}`}>
-            {/* Exit Button - Stop propagation to prevent triggering mousemove logic on container? No, click is fine. */}
             <button className="exit-btn" onClick={(e) => { e.stopPropagation(); navigate('/'); }}>
                 <X size={32} />
             </button>
@@ -62,208 +61,210 @@ const GhostUI = ({ show, audioStream, setAudioStream, mode, setMode, modeSetting
                 className="settings-panel"
                 onMouseEnter={onPanelEnter}
                 onMouseLeave={onPanelLeave}
-                style={{ maxHeight: '80vh', overflowY: 'auto' }}
             >
-                {/* Audio Input */}
-                <div className="section-title">Audio Source</div>
-                <div className="section-full">
-                    <button className={`vs-btn ${audioStream?.getVideoTracks().length === 0 ? 'active' : ''}`} onClick={() => handleAudioInput('mic')}><Mic size={16} style={{ marginRight: 8 }} /> Microphone</button>
-                    <button className={`vs-btn ${audioStream?.getVideoTracks().length > 0 ? 'active' : ''}`} onClick={() => handleAudioInput('system')}><Monitor size={16} style={{ marginRight: 8 }} /> System Audio</button>
-                </div>
-
-                {/* Visual Modes */}
-                <div className="section-title">Visual Mode</div>
-                <div className="section-full">
-                    <button className={`vs-btn ${mode === 'liquid' ? 'active' : ''}`} onClick={() => setMode('liquid')}><Waves size={16} style={{ marginRight: 8 }} /> Liquid Morph</button>
-                    <button className={`vs-btn ${mode === 'quake' ? 'active' : ''}`} onClick={() => setMode('quake')}><Activity size={16} style={{ marginRight: 8 }} /> Bass Quake</button>
-                    <button className={`vs-btn ${mode === 'neon' ? 'active' : ''}`} onClick={() => setMode('neon')}><Zap size={16} style={{ marginRight: 8 }} /> Neon Storm</button>
-                </div>
-
-                {/* Mode Specific Settings */}
-                <div className="section-title">
-                    {mode === 'liquid' ? 'Liquid Morph Settings' : mode === 'quake' ? 'Bass Quake Settings' : 'Neon Storm Settings'}
-                </div>
-
-                {/* Common Settings */}
-                {/* Common Settings (remapped for Liquid, kept standard for others for now or handled in visualizer?) 
-                   Actually, user said "Änder so das man alle Variablen von -10 bis 10 verändern kann". 
-                   This likely applies specifically to the current focus (Liquid). 
-                   But let's apply the UI changes for Liquid mode mainly or check if other modes break.
-                   Other modes (Quake, Neon) use speed/sensitivity too. I should probably keep the sliders generic but map them differently?
-                   Or just update the sliders and fix the mapping for ALL modes?
-                   User context was "Liquid Morph UI". I will update the sliders only when Liquid is active or update global sliders and fix mapping for others?
-                   Let's stick to Liquid specific section for the specific requests, but Speed/Sensitivity are shared.
-                   I will update Speed/Sensitivity to be -10 to 10 globally and fix mapping for other modes to keep them working.
-                */}
-
-                {/* Dynamic Grid Layout for Settings */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '10px' }}>
-
-                    {/* Common / shared */}
-                    <div>
-                        <label>Beat Impact: {currentSettings.sensitivity}</label>
-                        <input type="range" min="-10" max="10" step="1" value={currentSettings.sensitivity} onChange={(e) => updateSetting('sensitivity', parseFloat(e.target.value))} />
-                    </div>
-                    <div>
-                        <label>Motion Speed: {currentSettings.speed}</label>
-                        <input type="range" min="-10" max="10" step="1" value={currentSettings.speed} onChange={(e) => updateSetting('speed', parseFloat(e.target.value))} />
+                {/* Header Area: Audio and Mode Selection */}
+                <div className="settings-header">
+                    <div className="header-group">
+                        <div className="section-title"><Mic size={14} /> Audio Source</div>
+                        <div className="button-group">
+                            <button className={`vs-btn ${audioStream?.getVideoTracks().length === 0 ? 'active' : ''}`} onClick={() => handleAudioInput('mic')}>Mic</button>
+                            <button className={`vs-btn ${audioStream?.getVideoTracks().length > 0 ? 'active' : ''}`} onClick={() => handleAudioInput('system')}>System</button>
+                        </div>
                     </div>
 
-                    {/* Liquid Specific */}
+                    <div className="header-group" style={{ flex: 1 }}>
+                        <div className="section-title"><Monitor size={14} /> Visual Mode</div>
+                        <div className="button-group flex-fill">
+                            <button className={`vs-btn flex-fill ${mode === 'liquid' ? 'active' : ''}`} onClick={() => setMode('liquid')}><Waves size={16} /> Liquid</button>
+                            <button className={`vs-btn flex-fill ${mode === 'quake' ? 'active' : ''}`} onClick={() => setMode('quake')}><Activity size={16} /> Quake</button>
+                            <button className={`vs-btn flex-fill ${mode === 'neon' ? 'active' : ''}`} onClick={() => setMode('neon')}><Zap size={16} /> Neon</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="settings-content-area">
+                    {/* LIQUID MODE SETTINGS */}
                     {mode === 'liquid' && (
-                        <>
-                            {/* Frequency Controls - Span 2 cols */}
-                            <div style={{ gridColumn: 'span 2', background: 'rgba(255,255,255,0.05)', padding: '8px', borderRadius: '8px' }}>
-                                <div style={{ fontSize: '0.8rem', marginBottom: '4px', opacity: 0.8 }}>Frequency Impact</div>
-                                <div style={{ display: 'flex', gap: '8px' }}>
-                                    <div style={{ flex: 1 }}>
-                                        <label style={{ fontSize: '10px' }}>Low: {currentSettings.bassImpact || 0}</label>
-                                        <input type="range" min="-10" max="10" step="1" value={currentSettings.bassImpact || 0} onChange={(e) => updateSetting('bassImpact', parseInt(e.target.value))} style={{ width: '100%' }} />
+                        <div className="mode-settings-grid fade-in">
+                            <div className="setting-card">
+                                <div className="card-header"><Sliders size={14} /> Core Motion</div>
+                                <div className="setting-item">
+                                    <label>Motion Speed <span className="value-badge">{currentSettings.speed}</span></label>
+                                    <input type="range" min="-10" max="10" step="1" value={currentSettings.speed} onChange={(e) => updateSetting('speed', parseFloat(e.target.value))} />
+                                </div>
+                                <div className="setting-item">
+                                    <label>Beat Impact <span className="value-badge">{currentSettings.sensitivity}</span></label>
+                                    <input type="range" min="-10" max="10" step="1" value={currentSettings.sensitivity} onChange={(e) => updateSetting('sensitivity', parseFloat(e.target.value))} />
+                                </div>
+                                <div className="setting-item">
+                                    <label>Base Size <span className="value-badge">{currentSettings.baseRadius}</span></label>
+                                    <input type="range" min="-10" max="10" step="1" value={currentSettings.baseRadius} onChange={(e) => updateSetting('baseRadius', parseFloat(e.target.value))} />
+                                </div>
+                                <div className="setting-item">
+                                    <label>Decay Rate <span className="value-badge">{currentSettings.shrinkSpeed}</span></label>
+                                    <input type="range" min="-10" max="10" step="1" value={currentSettings.shrinkSpeed} onChange={(e) => updateSetting('shrinkSpeed', parseFloat(e.target.value))} />
+                                </div>
+                            </div>
+
+                            <div className="setting-card">
+                                <div className="card-header"><Activity size={14} /> Frequencies</div>
+                                <div className="freq-bars-container">
+                                    <div className="freq-bar">
+                                        <div className="freq-label">Low</div>
+                                        <input type="range" className="vertical-slider" min="-10" max="10" step="1" value={currentSettings.bassImpact || 0} onChange={(e) => updateSetting('bassImpact', parseInt(e.target.value))} />
+                                        <div className="freq-val">{currentSettings.bassImpact || 0}</div>
                                     </div>
-                                    <div style={{ flex: 1 }}>
-                                        <label style={{ fontSize: '10px' }}>Mid: {currentSettings.midImpact || 0}</label>
-                                        <input type="range" min="-10" max="10" step="1" value={currentSettings.midImpact || 0} onChange={(e) => updateSetting('midImpact', parseInt(e.target.value))} style={{ width: '100%' }} />
+                                    <div className="freq-bar">
+                                        <div className="freq-label">Mid</div>
+                                        <input type="range" className="vertical-slider" min="-10" max="10" step="1" value={currentSettings.midImpact || 0} onChange={(e) => updateSetting('midImpact', parseInt(e.target.value))} />
+                                        <div className="freq-val">{currentSettings.midImpact || 0}</div>
                                     </div>
-                                    <div style={{ flex: 1 }}>
-                                        <label style={{ fontSize: '10px' }}>High: {currentSettings.trebleImpact || 0}</label>
-                                        <input type="range" min="-10" max="10" step="1" value={currentSettings.trebleImpact || 0} onChange={(e) => updateSetting('trebleImpact', parseInt(e.target.value))} style={{ width: '100%' }} />
+                                    <div className="freq-bar">
+                                        <div className="freq-label">High</div>
+                                        <input type="range" className="vertical-slider" min="-10" max="10" step="1" value={currentSettings.trebleImpact || 0} onChange={(e) => updateSetting('trebleImpact', parseInt(e.target.value))} />
+                                        <div className="freq-val">{currentSettings.trebleImpact || 0}</div>
                                     </div>
                                 </div>
                             </div>
 
-                            <div>
-                                <label>Size: {currentSettings.baseRadius}</label>
-                                <input type="range" min="-10" max="10" step="1" value={currentSettings.baseRadius} onChange={(e) => updateSetting('baseRadius', parseFloat(e.target.value))} />
+                            <div className="setting-card">
+                                <div className="card-header"><LightningIcon size={14} /> Advanced</div>
+                                <div className="setting-item">
+                                    <label>Particle Count <span className="value-badge">{currentSettings.particleCount}</span></label>
+                                    <input type="range" min="-10" max="10" step="1" value={currentSettings.particleCount} onChange={(e) => updateSetting('particleCount', parseInt(e.target.value))} />
+                                </div>
+                                <div className="setting-item">
+                                    <label>Strobe Limit <span className="value-badge">{currentSettings.strobeThreshold}</span></label>
+                                    <input type="range" min="-10" max="10" step="1" value={currentSettings.strobeThreshold || 0} onChange={(e) => updateSetting('strobeThreshold', parseInt(e.target.value))} />
+                                </div>
+                                <div className="setting-item">
+                                    <label>Strobe Spd <span className="value-badge">{currentSettings.strobeSpeed}</span></label>
+                                    <input type="range" min="-10" max="10" step="1" value={currentSettings.strobeSpeed || 0} onChange={(e) => updateSetting('strobeSpeed', parseInt(e.target.value))} />
+                                </div>
                             </div>
-                            <div>
-                                <label>Decay: {currentSettings.shrinkSpeed}</label>
-                                <input type="range" min="-10" max="10" step="1" value={currentSettings.shrinkSpeed} onChange={(e) => updateSetting('shrinkSpeed', parseFloat(e.target.value))} />
-                            </div>
-                            <div>
-                                <label>Count: {currentSettings.particleCount}</label>
-                                <input type="range" min="-10" max="10" step="1" value={currentSettings.particleCount} onChange={(e) => updateSetting('particleCount', parseInt(e.target.value))} />
-                            </div>
-                            <div>
-                                <label>Strobe Level: {currentSettings.strobeThreshold}</label>
-                                <input type="range" min="-10" max="10" step="1" value={currentSettings.strobeThreshold || 0} onChange={(e) => updateSetting('strobeThreshold', parseInt(e.target.value))} />
-                            </div>
-                            <div>
-                                <label>Strobe Spd: {currentSettings.strobeSpeed}</label>
-                                <input type="range" min="-10" max="10" step="1" value={currentSettings.strobeSpeed || 0} onChange={(e) => updateSetting('strobeSpeed', parseInt(e.target.value))} />
-                            </div>
-                            <div>
-                                <label>Bg Tint</label>
-                                <input type="color" value={currentSettings.bgColor} onChange={(e) => updateSetting('bgColor', e.target.value)} style={{ width: '100%', height: '30px' }} />
-                            </div>
-                        </>
+                        </div>
                     )}
 
-                    {/* Neon Specific */}
+                    {/* QUAKE MODE SETTINGS */}
+                    {mode === 'quake' && (
+                        <div className="mode-settings-grid fade-in" style={{ gridTemplateColumns: '1fr' }}>
+                            <div className="setting-card">
+                                <div className="card-header"><Sliders size={14} /> Quake Physics</div>
+                                <div className="setting-item" style={{ maxWidth: '50%' }}>
+                                    <label>Motion Speed <span className="value-badge">{currentSettings.speed}</span></label>
+                                    <input type="range" min="-10" max="10" step="1" value={currentSettings.speed} onChange={(e) => updateSetting('speed', parseFloat(e.target.value))} />
+                                </div>
+                                <div className="setting-item" style={{ maxWidth: '50%' }}>
+                                    <label>Beat Impact <span className="value-badge">{currentSettings.sensitivity}</span></label>
+                                    <input type="range" min="0" max="5" step="0.1" value={currentSettings.sensitivity} onChange={(e) => updateSetting('sensitivity', parseFloat(e.target.value))} />
+                                </div>
+                                <div className="setting-item" style={{ maxWidth: '50%', marginTop: '1rem' }}>
+                                    <label>Symmetry Mode</label>
+                                    <button className={`vs-toggle-btn ${currentSettings.symmetry ? 'on' : 'off'}`} onClick={() => updateSetting('symmetry', !currentSettings.symmetry)}>
+                                        {currentSettings.symmetry ? 'ENABLED' : 'DISABLED'}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* NEON MODE SETTINGS */}
                     {mode === 'neon' && (
-                        <>
-                            {/* Intensity Controls */}
-                            <div style={{ gridColumn: 'span 2', background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '12px' }}>
-                                <div style={{ fontSize: '0.9rem', marginBottom: '8px', fontWeight: 'bold' }}>Physics (Layer B)</div>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-                                    <div>
-                                        <label>Shake: {currentSettings.shakeScale}%</label>
+                        <div className="mode-settings-grid fade-in">
+                            <div className="setting-card col-span-2">
+                                <div className="card-header"><Activity size={14} /> Layer B: Physics</div>
+                                <div className="grid-2-cols">
+                                    <div className="setting-item">
+                                        <label>Shake Force <span className="value-badge">{currentSettings.shakeScale}%</span></label>
                                         <input type="range" min="0" max="100" step="1" value={currentSettings.shakeScale} onChange={(e) => updateSetting('shakeScale', parseInt(e.target.value))} />
                                     </div>
-                                    <div>
-                                        <label>Wind Reactivity: {currentSettings.windReactivity}%</label>
+                                    <div className="setting-item">
+                                        <label>Wind Reactivity <span className="value-badge">{currentSettings.windReactivity}%</span></label>
                                         <input type="range" min="0" max="100" step="1" value={currentSettings.windReactivity} onChange={(e) => updateSetting('windReactivity', parseInt(e.target.value))} />
                                     </div>
-                                    <div style={{ gridColumn: 'span 2' }}>
-                                        <label>Smoothness (Decay): {currentSettings.smoothness}%</label>
+                                    <div className="setting-item col-span-2">
+                                        <label>Smoothness (Decay) <span className="value-badge">{currentSettings.smoothness}%</span></label>
                                         <input type="range" min="0" max="100" step="1" value={currentSettings.smoothness} onChange={(e) => updateSetting('smoothness', parseInt(e.target.value))} />
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', opacity: 0.5, marginTop: 4 }}>
-                                            <span>Hard / Snappy</span>
-                                            <span>Soft / Fat</span>
+                                        <div className="slider-labels">
+                                            <span>Snappy</span>
+                                            <span>Heavy</span>
                                         </div>
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Atmosphere Controls */}
-                            <div style={{ gridColumn: 'span 2', background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '12px' }}>
-                                <div style={{ fontSize: '0.9rem', marginBottom: '8px', fontWeight: 'bold' }}>Atmosphere (Layer A)</div>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-                                    <div>
-                                        <label>Base Rain: {currentSettings.rainAmount}%</label>
-                                        <input type="range" min="0" max="100" step="1" value={currentSettings.rainAmount} onChange={(e) => updateSetting('rainAmount', parseInt(e.target.value))} />
-                                    </div>
-                                    <div>
-                                        <label>Base Wind: {currentSettings.baseWind}%</label>
-                                        <input type="range" min="0" max="100" step="1" value={currentSettings.baseWind} onChange={(e) => updateSetting('baseWind', parseInt(e.target.value))} />
-                                    </div>
-                                    <div>
-                                        <label>Cloud Density: {currentSettings.cloudDensity}%</label>
-                                        <input type="range" min="0" max="100" step="1" value={currentSettings.cloudDensity} onChange={(e) => updateSetting('cloudDensity', parseInt(e.target.value))} />
-                                    </div>
-                                    <div>
-                                        <label>Lightning Sensitivity: {currentSettings.sensitivity}%</label>
-                                        <input type="range" min="0" max="100" step="1" value={currentSettings.sensitivity} onChange={(e) => updateSetting('sensitivity', parseInt(e.target.value))} />
-                                    </div>
+                            <div className="setting-card">
+                                <div className="card-header"><Droplets size={14} /> Layer A: Atmosphere</div>
+                                <div className="setting-item">
+                                    <label>Base Rain <span className="value-badge">{currentSettings.rainAmount}%</span></label>
+                                    <input type="range" min="0" max="100" step="1" value={currentSettings.rainAmount} onChange={(e) => updateSetting('rainAmount', parseInt(e.target.value))} />
+                                </div>
+                                <div className="setting-item">
+                                    <label>Base Wind <span className="value-badge">{currentSettings.baseWind}%</span></label>
+                                    <input type="range" min="0" max="100" step="1" value={currentSettings.baseWind} onChange={(e) => updateSetting('baseWind', parseInt(e.target.value))} />
+                                </div>
+                                <div className="setting-item">
+                                    <label>Cloud Density <span className="value-badge">{currentSettings.cloudDensity}%</span></label>
+                                    <input type="range" min="0" max="100" step="1" value={currentSettings.cloudDensity} onChange={(e) => updateSetting('cloudDensity', parseInt(e.target.value))} />
+                                </div>
+                                <div className="setting-item">
+                                    <label>Lightning Focus <span className="value-badge">{currentSettings.sensitivity}%</span></label>
+                                    <input type="range" min="0" max="100" step="1" value={currentSettings.sensitivity} onChange={(e) => updateSetting('sensitivity', parseInt(e.target.value))} />
                                 </div>
                             </div>
 
-                            {/* Toggles */}
-                            <div style={{ gridColumn: 'span 2', display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-                                <button className={`vs-btn ${currentSettings.lensDroplets ? 'active' : ''}`} onClick={() => updateSetting('lensDroplets', !currentSettings.lensDroplets)}>
-                                    Wet Lens
-                                </button>
-                                <button className={`vs-btn ${currentSettings.lightningFlash ? 'active' : ''}`} onClick={() => updateSetting('lightningFlash', !currentSettings.lightningFlash)}>
-                                    Flash Sync
-                                </button>
-                                <button className={`vs-btn ${currentSettings.floorFog ? 'active' : ''}`} onClick={() => updateSetting('floorFog', !currentSettings.floorFog)}>
-                                    Floor Fog
-                                </button>
-                                <button className={`vs-btn ${currentSettings.retinalBurn ? 'active' : ''}`} onClick={() => updateSetting('retinalBurn', !currentSettings.retinalBurn)}>
-                                    Retinal Burn
-                                </button>
-                                <button className={`vs-btn ${currentSettings.autoCycle ? 'active' : ''}`} onClick={() => updateSetting('autoCycle', !currentSettings.autoCycle)}>
-                                    Auto Cycle
-                                </button>
+                            <div className="setting-card toggle-grid">
+                                <button className={`vs-toggle-btn ${currentSettings.lensDroplets ? 'on' : ''}`} onClick={() => updateSetting('lensDroplets', !currentSettings.lensDroplets)}>Wet Lens</button>
+                                <button className={`vs-toggle-btn ${currentSettings.lightningFlash ? 'on' : ''}`} onClick={() => updateSetting('lightningFlash', !currentSettings.lightningFlash)}>Flash Sync</button>
+                                <button className={`vs-toggle-btn ${currentSettings.floorFog ? 'on' : ''}`} onClick={() => updateSetting('floorFog', !currentSettings.floorFog)}>Floor Fog</button>
+                                <button className={`vs-toggle-btn ${currentSettings.retinalBurn ? 'on' : ''}`} onClick={() => updateSetting('retinalBurn', !currentSettings.retinalBurn)}>Retina Burn</button>
+                                <button className={`vs-toggle-btn ${currentSettings.autoCycle ? 'on' : ''}`} onClick={() => updateSetting('autoCycle', !currentSettings.autoCycle)}>Auto Theme</button>
                             </div>
 
-                            {!currentSettings.autoCycle ? (
-                                <div style={{ gridColumn: 'span 2' }}>
-                                    <label>Manual Theme Hue</label>
-                                    <input type="range" min="0" max="360" step="1" value={currentSettings.manualHue} onChange={(e) => updateSetting('manualHue', parseInt(e.target.value))} />
-                                </div>
-                            ) : (
-                                <div style={{ gridColumn: 'span 2' }}>
-                                    <label>Color Shift Speed: {currentSettings.colorShiftSpeed}%</label>
-                                    <input type="range" min="0" max="100" step="1" value={currentSettings.colorShiftSpeed} onChange={(e) => updateSetting('colorShiftSpeed', parseInt(e.target.value))} />
-                                </div>
-                            )}
-                        </>
+                            <div className="setting-card">
+                                <div className="card-header"><Palette size={14} /> Color Shift</div>
+                                {!currentSettings.autoCycle ? (
+                                    <div className="setting-item">
+                                        <label>Manual Hue</label>
+                                        <div className="hue-slider-wrapper">
+                                            <input type="range" className="hue-slider" min="0" max="360" step="1" value={currentSettings.manualHue} onChange={(e) => updateSetting('manualHue', parseInt(e.target.value))} />
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="setting-item">
+                                        <label>Auto Shift Speed <span className="value-badge">{currentSettings.colorShiftSpeed}%</span></label>
+                                        <input type="range" min="0" max="100" step="1" value={currentSettings.colorShiftSpeed} onChange={(e) => updateSetting('colorShiftSpeed', parseInt(e.target.value))} />
+                                    </div>
+                                )}
+                            </div>
+                        </div>
                     )}
                 </div>
 
-                {/* Symmetry (Common but optional) */}
-                <div className="section-half">
-                    <label>Symmetry Mode</label>
-                    <button className={`vs-btn ${currentSettings.symmetry ? 'active' : ''}`} onClick={() => updateSetting('symmetry', !currentSettings.symmetry)}>
-                        {currentSettings.symmetry ? 'ON' : 'OFF'}
-                    </button>
+                {/* Footer Area: Global Colors */}
+                <div className="settings-footer">
+                    <div className="section-title"><Palette size={14} /> Palette</div>
+                    <div className="footer-content">
+                        <div className="presets-group">
+                            <button className="vs-btn" onClick={() => handlePreset('cyberpunk')}>Cyberpunk</button>
+                            <button className="vs-btn" onClick={() => handlePreset('deep_ocean')}>Ocean</button>
+                            <button className="vs-btn" onClick={() => handlePreset('sunset')}>Sunset</button>
+                            <button className="vs-btn" onClick={() => handlePreset('matrix')}>Matrix</button>
+                        </div>
+                        <div className="color-swatches">
+                            {colors.map((c, i) => (
+                                <input key={i} type="color" value={c} onChange={(e) => handleColorChange(i, e.target.value)} />
+                            ))}
+                            <div className="setting-item bg-color-item" style={{ marginLeft: 'auto' }}>
+                                <label style={{ fontSize: '0.7rem', marginBottom: 0, marginRight: '10px' }}>BG Tint (Liq)</label>
+                                <input type="color" value={modeSettings.liquid.bgColor} onChange={(e) => {
+                                    setModeSettings(prev => ({ ...prev, liquid: { ...prev.liquid, bgColor: e.target.value } }))
+                                }} />
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
-                {/* Colors */}
-                <div className="section-title">Color Palette</div>
-                <div className="section-full">
-                    <div style={{ marginBottom: 10 }}>
-                        <button className="vs-btn" onClick={() => handlePreset('cyberpunk')}>Cyberpunk</button>
-                        <button className="vs-btn" onClick={() => handlePreset('deep_ocean')}>Deep Ocean</button>
-                        <button className="vs-btn" onClick={() => handlePreset('sunset')}>Sunset</button>
-                        <button className="vs-btn" onClick={() => handlePreset('matrix')}>Matrix</button>
-                    </div>
-                    <div className="color-swatches">
-                        {colors.map((c, i) => (
-                            <input key={i} type="color" value={c} onChange={(e) => handleColorChange(i, e.target.value)} />
-                        ))}
-                    </div>
-                </div>
             </div>
         </div>
     );
