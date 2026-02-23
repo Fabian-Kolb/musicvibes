@@ -101,7 +101,8 @@ const Visualizer = ({ audioStream, mode, settings, colors }) => {
 
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         const analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 256;
+        // Erhöhe fftSize für feinere Frequenzauflösung (1024 / 44100Hz = ~43Hz pro Bin)
+        analyser.fftSize = 1024;
         analyser.smoothingTimeConstant = 0.9; // Default start
 
         const source = audioCtx.createMediaStreamSource(audioStream);
@@ -136,23 +137,39 @@ const Visualizer = ({ audioStream, mode, settings, colors }) => {
             // Need current colors for spawn logic reference, passing via closure might be stale if not careful?
             // Actually colors prop update triggers re-effect, so render loop restarts with new colors. Correct.
 
-            if (analyserRef.current) {
+            if (analyserRef.current && audioContextRef.current) {
+                // Force Update für Hot Module Replacement:
+                if (analyserRef.current.fftSize !== 1024) {
+                    analyserRef.current.fftSize = 1024;
+                }
+
                 frequencyData = new Uint8Array(analyserRef.current.frequencyBinCount);
                 analyserRef.current.getByteFrequencyData(frequencyData);
 
-                const bassEnd = Math.floor(frequencyData.length * 0.15); // Widen bass range (was 0.1)
-                const midEnd = Math.floor(frequencyData.length * 0.5);
+                // Hertz-basierte Berechnung der echten Grenzfrequenzen
+                const sampleRate = audioContextRef.current.sampleRate; // Meist 44100 oder 48000
+                const hzPerBin = sampleRate / analyserRef.current.fftSize;
 
-                let bassSum = 0, midSum = 0, trebleSum = 0;
-                for (let i = 0; i < frequencyData.length; i++) {
-                    if (i < bassEnd) bassSum += frequencyData[i];
-                    else if (i < midEnd) midSum += frequencyData[i];
-                    else trebleSum += frequencyData[i];
-                }
+                // Bin-Indizes basierend auf echten physikalischen Hz-Werten
+                const bassStart = Math.max(0, Math.floor(20 / hzPerBin));
+                const bassEnd = Math.ceil(250 / hzPerBin);
+                const midStart = bassEnd;
+                const midEnd = Math.ceil(4000 / hzPerBin);
+                const trebleStart = midEnd;
+                const trebleEnd = Math.min(frequencyData.length, Math.ceil(16000 / hzPerBin));
 
-                bass = (bassSum / bassEnd) || 0;
-                mid = (midSum / (midEnd - bassEnd)) || 0;
-                treble = (trebleSum / (frequencyData.length - midEnd)) || 0;
+                // Mit Math.max isolieren wir knackige Kicks/Transienten viel besser als mit Durchschnittswerten
+                let bassMax = 0, midMax = 0, trebleMax = 0;
+
+                for (let i = bassStart; i < bassEnd; i++) if (frequencyData[i] > bassMax) bassMax = frequencyData[i];
+                for (let i = midStart; i < midEnd; i++) if (frequencyData[i] > midMax) midMax = frequencyData[i];
+                for (let i = trebleStart; i < trebleEnd; i++) if (frequencyData[i] > trebleMax) trebleMax = frequencyData[i];
+
+                bass = bassMax;
+                mid = midMax;
+                treble = trebleMax;
+
+                // Volume über alle echten musikalischen Bins (nicht das gesamte restliche leere Spektrum)
                 volume = (bass + mid + treble) / 3;
 
                 // Update Running Averages for Transient Detection
@@ -271,12 +288,17 @@ const Visualizer = ({ audioStream, mode, settings, colors }) => {
 
                     const dynamicSpeed = (0.2 + (volRatio * 5.0)) * mappedSpeedMultiplier;
 
+                    // Deformation (Simplex Noise) stark durch Mitten und Höhen getrieben (Zittern/Mikrobewegungen)
+                    // Normaler noise is 0.002. Mitten und Höhen erhöhen die Amplitude dieses Werts, sodass Glibber rüttelt.
+                    const midTrebleEnergy = Math.max(0, (mid - avgMidRef.current * 0.8) / 255) * mappedMidImp + Math.max(0, (treble - avgTrebleRef.current * 0.8) / 255) * mappedTrebleImp;
+                    const noiseAmplitude = 0.002 + (midTrebleEnergy * 0.02);
+
                     const noiseX = noise3D(p.noiseOffsetX, timeRef.current, 0);
                     const noiseY = noise3D(p.noiseOffsetY, timeRef.current, 100);
 
-                    // Apply dynamic speed to both velocity vector and noise drift
-                    p.x += (p.vx + noiseX * 0.002) * dynamicSpeed;
-                    p.y += (p.vy + noiseY * 0.002) * dynamicSpeed;
+                    // Apply dynamic speed to velocity vector and highly reactive noise drift
+                    p.x += (p.vx + noiseX * noiseAmplitude) * dynamicSpeed;
+                    p.y += (p.vy + noiseY * noiseAmplitude) * dynamicSpeed;
 
                     // Removal Check
                     if (p.toRemove) {
@@ -304,22 +326,15 @@ const Visualizer = ({ audioStream, mode, settings, colors }) => {
                     // -- Draw with Pulse Decay --
 
                     // Current Instant Impact (Custom Frequency Focus)
-                    // Logic: Transient Detection (Beat) rather than raw Volume
-                    // This prevents "Static Huge" size when sliders are maxed.
-                    // We look for parts of the signal that stand out above the running average.
-
-                    // Normalized Transients (0-1 range roughly)
+                    // Isolierung der Frequenzen: Die VOLUMETRISCHE Ausdehnung wird NUR noch durch echten Bass getrieben.
                     const bassT = Math.max(0, (bass - avgBassRef.current * 0.8) / 255);
-                    const midT = Math.max(0, (mid - avgMidRef.current * 0.8) / 255);
-                    const trebleT = Math.max(0, (treble - avgTrebleRef.current * 0.8) / 255);
 
-                    // Weighted Sum
-                    let weightedSum = (bassT * mappedBassImp) + (midT * mappedMidImp) + (trebleT * mappedTrebleImp);
+                    // Weighted Sum (Exklusiv für Größe zuständig = nur BASS)
+                    // Da Mitten und Höhen fehlen, verdoppeln wir den Bass-Einfluss, damit die Kugeln mächtig aufblähen
+                    let weightedSizeSum = (bassT * mappedBassImp * 2.5);
 
                     // Clamp to 0-1 range (or slightly higher for overdrive)
-                    // If everything is maxed, we want it to be huge, but only on beats.
-                    // Transients are usually small (0.1 - 0.3), so multiplying by 6.0 gives 0.6 - 1.8. 
-                    const targetVolFactor = Math.min(1.2, weightedSum);
+                    const targetVolFactor = Math.min(1.5, weightedSizeSum);
 
                     // Noise Gate: Ignore small fluctuations to prevent "fluttering"
                     // If factor is tiny, kill it.
