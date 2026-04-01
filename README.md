@@ -1,4 +1,4 @@
-# Musicvibes
+# Musicvibes (Vibe Coding)
 
 Eine React-basierte Web-App zur Echtzeit-Visualisierung von Audiofrequenzen mit anpassbaren Themes.
 
