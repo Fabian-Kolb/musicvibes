@@ -1,16 +1,38 @@
-# React + Vite
+# Musicvibes
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Eine React-basierte Web-App zur Echtzeit-Visualisierung von Audiofrequenzen mit anpassbaren Themes.
 
-Currently, two official plugins are available:
+## ✨ Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **🎶 Echtzeit Audio-Visualisierung**: Präzise Analyse von Audiofrequenzen mit logarithmischen Frequenzbändern (Bass, Mids, Highs) für absolut synchrones Audio-Feedback.
+- **🌊 "Liquid" Visualizer Modus**: Einzigartige und organische Animationen, die sich der Musik anpassen – tiefe Bässe erzeugen beeindruckende Expansionen, während Mitten und Höhen subtile Mikrobewegungen steuern.
+- **🎨 Custom Theme Creator**: Ein umfassendes Tool zum Erstellen eigener Themes im eleganten "Glass"-Design, inklusive Live-Vorschau und Funktionen zum Speichern eigener Farbpaletten.
+- **📱 Edles & Responsives UI**: Wunderschönes User Interface mit flüssigen Animationen, modernen Layouts (Glassmorphism) und perfekter Usability, optimiert für verschiedene Bildschirmgrößen.
 
-## React Compiler
+## 🛠️ Technologien
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+| Bereich | Technologie |
+| :--- | :--- |
+| **Framework** | [React 19](https://react.dev/) |
+| **Build Tool** | [Vite](https://vitejs.dev/) |
+| **Routing** | [React Router](https://reactrouter.com/) |
+| **Animationen** | `simplex-noise` |
+| **Icons** | `lucide-react` |
 
-## Expanding the ESLint configuration
+## 🚀 Lokale Entwicklung
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+1. **Abhängigkeiten installieren:**
+   ```bash
+   npm install
+   ```
+
+2. **Entwicklungsserver starten:**
+   ```bash
+   npm run dev
+   ```
+
+Die App ist im Anschluss lokal unter `http://localhost:5173/` im Browser erreichbar.
+
+---
+
+💡 *Dieses Projekt wurde als Vibe-Coding-Projekt mit KI-Unterstützung umgesetzt.*
