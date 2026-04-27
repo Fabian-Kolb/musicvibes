@@ -234,8 +234,8 @@ const Visualizer = ({ audioStream, mode, settings, colors }) => {
                 const mappedSens = mapSetting(valSens, 1.5, 0.1, 5.0);
                 const mappedShrink = mapSetting(valShrink, 0.1, 0.001, 2.0);
                 const mappedRadius = mapSetting(valRadius, 1.0, 0.1, 5.0);
-                const mappedStrobeThresh = 0.7 - (valStrobeThresh * 0.035);
-                const mappedStrobeSpeed = 30 + (valStrobeSpeed * 2.5);
+                const mappedStrobeThresh = 0.6 - (valStrobeThresh * 0.05); // More sensitive at high values
+                const mappedStrobeSpeed = 20 * Math.pow(1.25, valStrobeSpeed); // Exponential speed range for much faster flickering
 
                 // 7. Frequency Impact Mappings (User Request: Distinct controls)
                 // -10 -> 0x (Off), 0 -> 1x (Standard), 10 -> 6x (High Gain on Transients)

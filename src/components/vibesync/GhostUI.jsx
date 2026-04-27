@@ -134,11 +134,11 @@ const GhostUI = ({ show, audioStream, setAudioStream, mode, setMode, modeSetting
                                     <input type="range" min="-10" max="10" step="1" value={currentSettings.particleCount} onChange={(e) => updateSetting('particleCount', parseInt(e.target.value))} />
                                 </div>
                                 <div className="setting-item">
-                                    <label>Strobe Limit <span className="value-badge">{currentSettings.strobeThreshold}</span></label>
+                                    <label>Strobe Auslöser <span className="value-badge">{currentSettings.strobeThreshold}</span></label>
                                     <input type="range" min="-10" max="10" step="1" value={currentSettings.strobeThreshold || 0} onChange={(e) => updateSetting('strobeThreshold', parseInt(e.target.value))} />
                                 </div>
                                 <div className="setting-item">
-                                    <label>Strobe Spd <span className="value-badge">{currentSettings.strobeSpeed}</span></label>
+                                    <label>Strobe Schnelligkeit <span className="value-badge">{currentSettings.strobeSpeed}</span></label>
                                     <input type="range" min="-10" max="10" step="1" value={currentSettings.strobeSpeed || 0} onChange={(e) => updateSetting('strobeSpeed', parseInt(e.target.value))} />
                                 </div>
                             </div>
