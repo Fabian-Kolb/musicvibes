@@ -1,4 +1,4 @@
-import { calculateAudioPhysics, processFrequencyBands, mapSetting } from '../src/utils/audioPhysics.js';
+import { calculateAudioPhysics } from '../src/utils/audioPhysics.js';
 
 console.log('🧪 Running Challenger Edge-Case Empirical Stress Tests...\n');
 
@@ -77,43 +77,58 @@ const maxValuesValid = Object.values(physicsMax).every(v => {
     return true;
 });
 assert(maxValuesValid, 'All 255s FFT produces valid non-NaN finite numbers for all physics parameters');
+// All 255s in Continuous mode
+const physicsMaxCont = calculateAudioPhysics({
+    frequencyData: maxFft,
+    settings: { dropMode: 'Continuous' }
+});
 assert(physicsMax.totalRMS === 1.0, `All 255s FFT gives totalRMS = ${physicsMax.totalRMS}`);
 assert(physicsMax.viscosity >= 0.15 && physicsMax.viscosity <= 3.0, `All 255s FFT viscosity = ${physicsMax.viscosity} (clamped within [0.15, 3.0])`);
-assert(physicsMax.isStrobeActive === true, 'All 255s FFT results in isStrobeActive = true');
+assert(physicsMaxCont.isStrobeActive === true, 'All 255s FFT in Continuous mode results in isStrobeActive = true');
 
 // -------------------------------------------------------------
-// TEST 3: Strobe Threshold Boundary Values (0.0, 1.0)
+// TEST 3: Drop Sensitivity & Triggering
 // -------------------------------------------------------------
-console.log('\n--- Test Group 3: Strobe Threshold Boundary Values (0.0, 1.0) ---');
+console.log('\n--- Test Group 3: Drop Sensitivity & Triggering ---');
 
 // Moderate energy test data (RMS = 0.5)
 const midFft = new Uint8Array(512).fill(128);
 
-// Threshold = 0.0
-// Note: In audioPhysics.js: safeSettings.strobeThreshold > 0.
-// When set to 0.0, 0.0 > 0 is false, so it uses fallback Math.max(0.12, 0.40 / Math.max(0.1, sensitivity))
-const physicsStrobe0 = calculateAudioPhysics({
+const physicsMid = calculateAudioPhysics({
     frequencyData: midFft,
-    settings: { strobeThreshold: 0.0 }
+    settings: { strobeSensitivity: 1.0, dropMode: 'Drop-Reaktiv' }
 });
-assert(Number.isFinite(physicsStrobe0.strobeThreshold) && physicsStrobe0.strobeThreshold > 0,
-    `strobeThreshold = 0.0 falls back safely to default minimum threshold (${physicsStrobe0.strobeThreshold.toFixed(4)})`);
+assert(Number.isFinite(physicsMid.dropRatio), `dropRatio is a valid finite number (${physicsMid.dropRatio})`);
+assert(physicsMid.isStrobeActive === false, `Steady mid energy without surge yields isStrobeActive = false`);
 
-// Threshold = 1.0
-// Requires currentMusicEnergy >= 1.0 to trigger strobe via energy threshold
-const physicsStrobe1_mid = calculateAudioPhysics({
-    frequencyData: midFft,
-    settings: { strobeThreshold: 1.0, dropMode: 'Drop-Reaktiv' }
-});
-assert(physicsStrobe1_mid.strobeThreshold === 1.0, `strobeThreshold = 1.0 is preserved exactly`);
-assert(physicsStrobe1_mid.isStrobeActive === false, `strobeThreshold = 1.0 with mid energy (0.50) yields isStrobeActive = false`);
-
-const physicsStrobe1_max = calculateAudioPhysics({
-    frequencyData: maxFft,
-    settings: { strobeThreshold: 1.0, dropMode: 'Drop-Reaktiv' },
-    prevState: quietState
-});
-assert(physicsStrobe1_max.isStrobeActive === true, `strobeThreshold = 1.0 with max energy (1.00) yields isStrobeActive = true`);
+// Drop trigger with prior quiet state and sudden massive transient surge (simulating 60fps frame steps)
+const priorQuietSpectrum = new Uint8Array(512).fill(0);
+let dynamicState = {
+    avgEnergyFast: 0.05,
+    avgEnergyMed: 0.05,
+    avgEnergyLong: 0.05,
+    beatPunchDecay: 0.0,
+    snareHitDecay: 0.0,
+    prevSpectrum: priorQuietSpectrum,
+    dropActiveTimer: 0.0,
+    cooldownTimer: 0.0,
+    lastTimestamp: 0
+};
+let isTriggered = false;
+for (let f = 1; f <= 5; f++) {
+    const res = calculateAudioPhysics({
+        frequencyData: maxFft,
+        timestamp: f * 16.66,
+        settings: { strobeSensitivity: 1.0, dropMode: 'Drop-Reaktiv' },
+        prevState: dynamicState
+    });
+    dynamicState = res.state;
+    if (res.isDropTriggered) {
+        isTriggered = true;
+        break;
+    }
+}
+assert(isTriggered === true, `Sudden explosion from quiet baseline triggers drop (isDropTriggered = true)`);
 
 // -------------------------------------------------------------
 // TEST 4: Smooth Color Blending Equations & Zero Divide Prevention

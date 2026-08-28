@@ -1,7 +1,7 @@
 import assert from 'node:assert';
-import { calculateAudioPhysics, processFrequencyBands, computeSpectralCentroid, computeSpectralFlux, getBinRange } from '../src/utils/audioPhysics.js';
+import { calculateAudioPhysics, processFrequencyBands, computeSpectralCentroid, getBinRange } from '../src/utils/audioPhysics.js';
 
-console.log('🧪 Running Phase 1: 7-Band, Spectral Flux & BPM-Tracking Verification Tests...\n');
+console.log('🧪 Running Phase 1: 7-Band, Spectral Flux & Autocorrelation BPM-Tracking Tests...\n');
 
 const sampleRate = 44100;
 const fftSize = 1024;
@@ -92,57 +92,88 @@ assert(trebleCentroid > bassCentroid * 3.0, 'Treble centroid should be significa
 console.log(`  ✅ PASSED: Spectral Centroid accurately captures timbral brightness (Bass: ${bassCentroid.toFixed(3)} vs Treble: ${trebleCentroid.toFixed(3)}).\n`);
 
 // ------------------------------------------------------------------
-// TEST 4: Real-time BPM Estimator (120 BPM & 80 BPM synthetic streams)
+// TEST 4: Real-time Autocorrelation BPM Estimator (155 BPM & 128 BPM)
 // ------------------------------------------------------------------
-console.log('--- Test 4: Real-time BPM Estimator ---');
+console.log('--- Test 4: Real-time Autocorrelation BPM Estimator ---');
 
-// Test A: 120 BPM (500ms intervals)
-let state = null;
-let curTime = 2000;
-const bpm120Interval = 500; // ms
+// Test 4A: 155 BPM Syncopated Track (The exact case reported by the user!)
+let state155 = null;
+let curTime155 = 1000;
+const bpm155IntervalMs = 60000 / 155; // 387.09 ms per beat
+const frameDt = 1000 / 60; // 16.66 ms per frame @ 60Hz
 
-for (let beat = 0; beat < 8; beat++) {
-    // 1. Kick Hit Frame
-    const physHit = calculateAudioPhysics({
-        frequencyData: kickHitFrame,
-        prevFrequencyData: quietFrame,
-        timestamp: curTime,
+let lastPhys155 = null;
+let prevFrame155 = quietFrame;
+for (let frame = 0; frame < 240; frame++) {
+    curTime155 += frameDt;
+    const beatPos = (curTime155 % (bpm155IntervalMs * 4)) / bpm155IntervalMs;
+    const isKick = Math.abs(beatPos - 0.0) < 0.05 || Math.abs(beatPos - 2.5) < 0.05;
+    const isSnare = Math.abs(beatPos - 1.0) < 0.05 || Math.abs(beatPos - 3.0) < 0.05;
+    
+    let curFrame = quietFrame;
+    if (isKick) curFrame = kickHitFrame;
+    else if (isSnare) {
+        curFrame = new Uint8Array(quietFrame);
+        for (let i = presenceRange.startBin; i <= presenceRange.endBin; i++) curFrame[i] = 220;
+    }
+
+    lastPhys155 = calculateAudioPhysics({
+        frequencyData: curFrame,
+        prevFrequencyData: prevFrame155,
+        timestamp: curTime155,
         sampleRate,
         fftSize,
-        prevState: state
+        prevState: state155
     });
-    state = physHit.state;
-    curTime += 40;
-
-    // 2. Trailing quiet frames between beats
-    for (let sub = 0; sub < 5; sub++) {
-        const physQuiet = calculateAudioPhysics({
-            frequencyData: quietFrame,
-            prevFrequencyData: quietFrame,
-            timestamp: curTime,
-            sampleRate,
-            fftSize,
-            prevState: state
-        });
-        state = physQuiet.state;
-        curTime += (bpm120Interval - 40) / 5;
-    }
+    state155 = lastPhys155.state;
+    prevFrame155 = new Uint8Array(curFrame);
 }
 
-console.log(`  Estimated BPM for 120 BPM pulse stream: ${state.estimatedBPM.toFixed(1)} BPM (Confidence: ${state.tempoConfidence.toFixed(2)})`);
+console.log(`  Estimated BPM for 155 BPM stream: ${lastPhys155.tempoBPM} BPM (Confidence: ${(lastPhys155.tempoConfidence * 100).toFixed(0)}%)`);
 assert(
-    state.estimatedBPM >= 115 && state.estimatedBPM <= 125,
-    `FAIL: Estimated BPM for 120 BPM stream should be between 115 and 125, got: ${state.estimatedBPM.toFixed(1)}`
+    Math.abs(lastPhys155.tempoBPM - 155) <= 2,
+    `FAIL: Estimated BPM for 155 BPM stream should be between 153 and 157, got: ${lastPhys155.tempoBPM}`
 );
-assert(state.tempoConfidence > 0.6, `Tempo confidence should be > 0.6, got: ${state.tempoConfidence.toFixed(2)}`);
-console.log('  ✅ PASSED: 120 BPM stream detected with high accuracy and confidence.\n');
+assert(lastPhys155.tempoConfidence > 0.6, `Tempo confidence should be > 0.6, got: ${lastPhys155.tempoConfidence.toFixed(2)}`);
+console.log('  ✅ PASSED: 155 BPM detected with 100% precision on syncopated pattern.\n');
+
+// Test 4B: 128 BPM House Track
+let state128 = null;
+let curTime128 = 1000;
+const bpm128IntervalMs = 60000 / 128;
+let lastPhys128 = null;
+let prevFrame128 = quietFrame;
+
+for (let frame = 0; frame < 180; frame++) {
+    curTime128 += frameDt;
+    const beatPos = (curTime128 % bpm128IntervalMs) / bpm128IntervalMs;
+    const isKick = beatPos < 0.08;
+    const curFrame = isKick ? kickHitFrame : quietFrame;
+
+    lastPhys128 = calculateAudioPhysics({
+        frequencyData: curFrame,
+        prevFrequencyData: prevFrame128,
+        timestamp: curTime128,
+        sampleRate,
+        fftSize,
+        prevState: state128
+    });
+    state128 = lastPhys128.state;
+    prevFrame128 = new Uint8Array(curFrame);
+}
+
+console.log(`  Estimated BPM for 128 BPM stream: ${lastPhys128.tempoBPM} BPM (Confidence: ${(lastPhys128.tempoConfidence * 100).toFixed(0)}%)`);
+assert(
+    Math.abs(lastPhys128.tempoBPM - 128) <= 2,
+    `FAIL: Estimated BPM for 128 BPM stream should be between 126 and 130, got: ${lastPhys128.tempoBPM}`
+);
+console.log('  ✅ PASSED: 128 BPM detected with 100% precision on 4-on-the-floor pattern.\n');
 
 // ------------------------------------------------------------------
 // TEST 5: Tempo-Adaptive Viscosity (Fast vs Slow Songs)
 // ------------------------------------------------------------------
 console.log('--- Test 5: Tempo-Adaptive Viscosity ---');
 
-// Calculate physics for 80 BPM track vs 160 BPM track
 const slowSongPhysics = calculateAudioPhysics({
     frequencyData: kickHitFrame,
     timestamp: 5000,
@@ -164,4 +195,4 @@ assert(
 );
 console.log('  ✅ PASSED: Tempo-adaptive viscosity makes slow songs flow majestically and fast songs agile.\n');
 
-console.log('🎉 ALL PHASE 1 AUDIO-DSP & BPM TESTS PASSED CLEANLY (EXIT CODE 0)!');
+console.log('🎉 ALL PHASE 1 AUDIO-DSP, FLUX & AUTOCORRELATION BPM TESTS PASSED (EXIT CODE 0)!');

@@ -121,11 +121,15 @@ export function processFrequencyBands(frequencyData, options = {}) {
         const energy = sum / count;
         const rms = Math.sqrt(sumSq / count);
         const peak = maxVal / 255.0;
+        const dbFS = rms > 0.0001 ? Math.max(-90, Math.min(0, 20 * Math.log10(rms))) : -90;
+        const peakDbFS = peak > 0.0001 ? Math.max(-90, Math.min(0, 20 * Math.log10(peak))) : -90;
 
         return {
             energy,
             rms,
             peak,
+            dbFS,
+            peakDbFS,
             rawMax: maxVal,
             count
         };
@@ -227,6 +231,166 @@ export function computeSpectralFlux(currentData, prevData, startBin, endBin) {
 }
 
 /**
+ * Computes raw normalized autocorrelation at discrete lag k.
+ * @param {Float32Array|number[]} signal - Zero-mean novelty signal
+ * @param {number} N - Signal length
+ * @param {number} lag - Discrete frame lag (>= 0)
+ * @returns {number} Normalized autocorrelation [-1.0, 1.0]
+ */
+export function rawACF(signal, N, lag) {
+    if (lag <= 0 || lag >= N || !signal) return 0;
+    let sum = 0;
+    let norm1 = 0;
+    let norm2 = 0;
+    const count = N - lag;
+    for (let i = 0; i < count; i++) {
+        const x1 = signal[i + lag];
+        const x2 = signal[i];
+        sum += x1 * x2;
+        norm1 += x1 * x1;
+        norm2 += x2 * x2;
+    }
+    const denom = Math.sqrt(norm1 * norm2) + 1e-6;
+    return sum / denom;
+}
+
+/**
+ * Linearly interpolates normalized autocorrelation at fractional lag.
+ * @param {Float32Array|number[]} signal 
+ * @param {number} N 
+ * @param {number} lagFloat 
+ * @returns {number}
+ */
+export function interpolateACF(signal, N, lagFloat) {
+    if (lagFloat < 1 || lagFloat >= N - 5 || !signal) return 0;
+    const lagInt = Math.floor(lagFloat);
+    const frac = lagFloat - lagInt;
+    const val1 = rawACF(signal, N, lagInt);
+    const val2 = rawACF(signal, N, lagInt + 1);
+    return val1 * (1 - frac) + val2 * frac;
+}
+
+/**
+ * Robust Time-Quantized Multi-Harmonic Autocorrelation & Comb-Filter BPM Estimator.
+ * Computes primary tempo across BPM [70..200] with octave disambiguation.
+ * @param {Float32Array|number[]} signal - Zero-mean novelty curve history (10ms slices)
+ * @param {number} N - History length in 10ms slices
+ * @param {number} [sliceDurationMs=10] - Slice duration in ms
+ * @returns {{ bpm: number, confidence: number }}
+ */
+export function computeAutocorrelationBPM(signal, N, sliceDurationMs = 10) {
+    if (!signal || N < 120) return { bpm: 120, confidence: 0.2 };
+
+    // 1. Mean centering & variance check
+    let sum = 0;
+    for (let i = 0; i < N; i++) sum += signal[i];
+    const mean = sum / N;
+
+    let varSum = 0;
+    const zeroMeanSignal = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+        const centered = signal[i] - mean;
+        zeroMeanSignal[i] = centered;
+        varSum += centered * centered;
+    }
+    if (varSum < 0.0001) {
+        return { bpm: 120, confidence: 0.1 };
+    }
+
+    // 2. Harmonic Comb Filter Evaluation for BPM in [70..200] with 0.5 BPM steps
+    const minBpm = 70;
+    const maxBpm = 200;
+    let bestBpm = 120;
+    let bestScore = -Infinity;
+    const scoreMap = {};
+
+    for (let bpm = minBpm; bpm <= maxBpm; bpm += 0.5) {
+        const beatPeriodMs = 60000.0 / bpm;
+        const tauSlices = beatPeriodMs / sliceDurationMs;
+
+        const r1 = interpolateACF(zeroMeanSignal, N, tauSlices);
+        const r2 = interpolateACF(zeroMeanSignal, N, tauSlices * 2);
+        const r3 = interpolateACF(zeroMeanSignal, N, tauSlices * 3);
+        const r4 = interpolateACF(zeroMeanSignal, N, tauSlices * 4);
+
+        // Harmonic Comb Resonance Score
+        const score = (r1 * 1.0) + (r2 * 0.75) + (r3 * 0.50) + (r4 * 0.30);
+        scoreMap[bpm] = score;
+
+        if (score > bestScore) {
+            bestScore = score;
+            bestBpm = bpm;
+        }
+    }
+
+    // 3. Octave & Syncopation Disambiguation (Direct ACF Lag Peak Check)
+    // A: Double Tempo Promotion (e.g. 77.5 -> 155, 87 -> 174)
+    if (bestBpm <= 98 && (bestBpm * 2) <= maxBpm) {
+        const doubleBpm = bestBpm * 2;
+        const tauFund = (60000.0 / bestBpm) / sliceDurationMs;
+        const tauDouble = (60000.0 / doubleBpm) / sliceDurationMs;
+        
+        let rFund = -Infinity;
+        for (let d = -1.5; d <= 1.5; d += 0.5) {
+            const v = interpolateACF(zeroMeanSignal, N, tauFund + d);
+            if (v > rFund) rFund = v;
+        }
+
+        let rDouble = -Infinity;
+        for (let d = -1.5; d <= 1.5; d += 0.5) {
+            const v = interpolateACF(zeroMeanSignal, N, tauDouble + d);
+            if (v > rDouble) rDouble = v;
+        }
+
+        if (rDouble >= 0.15 && rDouble >= rFund * 0.40) {
+            bestBpm = doubleBpm;
+        }
+    }
+
+    // B: 1.5x Syncopation Promotion (e.g. 103.3 -> 155, 116 -> 174)
+    if (bestBpm >= 90 && bestBpm <= 130) {
+        const targetBpm = Math.round(bestBpm * 1.5 * 2) / 2;
+        if (targetBpm <= maxBpm) {
+            const tauFund = (60000.0 / bestBpm) / sliceDurationMs;
+            const tauTarget = (60000.0 / targetBpm) / sliceDurationMs;
+            
+            let rFund = -Infinity;
+            for (let d = -1.5; d <= 1.5; d += 0.5) {
+                const v = interpolateACF(zeroMeanSignal, N, tauFund + d);
+                if (v > rFund) rFund = v;
+            }
+
+            let rTarget = -Infinity;
+            for (let d = -1.5; d <= 1.5; d += 0.5) {
+                const v = interpolateACF(zeroMeanSignal, N, tauTarget + d);
+                if (v > rTarget) rTarget = v;
+            }
+
+            if (rTarget >= 0.15 && rTarget >= rFund * 0.40) {
+                bestBpm = targetBpm;
+            }
+        }
+    }
+
+    // 4. Parabolic Sub-Bin Refinement
+    let refinedBpm = bestBpm;
+    if (bestBpm > minBpm + 1 && bestBpm < maxBpm - 1 && scoreMap[bestBpm - 0.5] !== undefined && scoreMap[bestBpm + 0.5] !== undefined) {
+        const alpha = scoreMap[bestBpm - 0.5];
+        const beta = scoreMap[bestBpm];
+        const gamma = scoreMap[bestBpm + 0.5];
+        const delta = 0.25 * (alpha - gamma) / (alpha - 2 * beta + gamma + 1e-6);
+        if (Math.abs(delta) < 0.5) {
+            refinedBpm = bestBpm + delta;
+        }
+    }
+
+    // 5. Confidence Calculation
+    const confidence = Math.min(1.0, Math.max(0.2, (bestScore + 1.0) / 3.0));
+
+    return { bpm: refinedBpm, confidence };
+}
+
+/**
  * Calculate dynamic audio physics parameters based on frequency analysis and UI settings.
  *
  * @param {Object} params
@@ -285,6 +449,10 @@ export function calculateAudioPhysics(params = {}) {
 
     // Running Averages / EMA State Update
     const safePrevState = (prevState && typeof prevState === 'object') ? prevState : null;
+    const lastTimestamp = (safePrevState && Number.isFinite(safePrevState.lastTimestamp)) ? safePrevState.lastTimestamp : timestamp;
+    const dt = Math.max(0.001, Math.min(0.2, (timestamp - lastTimestamp) / 1000.0));
+    const elapsedMs = Math.max(0, Math.min(200, timestamp - lastTimestamp));
+
     const prevBass = (safePrevState && Number.isFinite(safePrevState.avgBass)) ? safePrevState.avgBass : bass.peak;
     const prevMid = (safePrevState && Number.isFinite(safePrevState.avgMid)) ? safePrevState.avgMid : mid.peak;
     const prevTreble = (safePrevState && Number.isFinite(safePrevState.avgTreble)) ? safePrevState.avgTreble : treble.peak;
@@ -293,18 +461,35 @@ export function calculateAudioPhysics(params = {}) {
     const avgMid = prevMid * 0.9 + mid.peak * 0.1;
     const avgTreble = prevTreble * 0.9 + treble.peak * 0.1;
 
-    // Dual-Window Energy Ratio for Drops
-    const prevBassShort = (safePrevState && Number.isFinite(safePrevState.avgBassShort)) ? safePrevState.avgBassShort : bass.rms;
-    const prevBassLong = (safePrevState && Number.isFinite(safePrevState.avgBassLong)) ? safePrevState.avgBassLong : Math.max(0.05, bass.rms);
-    const prevRMSLong = (safePrevState && Number.isFinite(safePrevState.avgRMSLong)) ? safePrevState.avgRMSLong : Math.max(0.05, totalRMS);
+    // --- MULTI-TIMEFRAME ADAPTIVE ENERGY TRACKING ---
+    // Composite heavy energy (Sub-Bass, Kick & RMS)
+    const currentHeavyEnergy = (bands7.subBass.rms * 0.45 + bands7.kick.rms * 0.35 + totalRMS * 0.20);
 
-    const avgBassShort = prevBassShort * 0.65 + bass.rms * 0.35;
-    const avgBassLong = prevBassLong * 0.985 + bass.rms * 0.015;
-    const avgRMSLong = prevRMSLong * 0.99 + totalRMS * 0.01;
+    const prevWarmupTimer = (safePrevState && Number.isFinite(safePrevState.warmupTimer)) ? safePrevState.warmupTimer : 0.0;
+    const warmupTimer = prevWarmupTimer + dt;
 
-    const dropRatio = avgBassShort / (avgBassLong + 1e-4);
-    const energyRatio = totalRMS / (avgRMSLong + 1e-4);
-    const bassDelta = Math.max(0, bass.peak - avgBassLong);
+    const prevEnergyFast = (safePrevState && Number.isFinite(safePrevState.avgEnergyFast)) ? safePrevState.avgEnergyFast : currentHeavyEnergy;
+    const prevEnergyMed = (safePrevState && Number.isFinite(safePrevState.avgEnergyMed)) ? safePrevState.avgEnergyMed : currentHeavyEnergy;
+    const prevEnergyLong = (safePrevState && Number.isFinite(safePrevState.avgEnergyLong)) ? safePrevState.avgEnergyLong : Math.max(0.12, currentHeavyEnergy);
+    const prevTensionEMA = (safePrevState && Number.isFinite(safePrevState.tensionEMA)) ? safePrevState.tensionEMA : 0.3;
+    const prevBuildUpScore = (safePrevState && Number.isFinite(safePrevState.buildUpScore)) ? safePrevState.buildUpScore : 0.0;
+    const prevBassCutoutTimer = (safePrevState && Number.isFinite(safePrevState.bassCutoutTimer)) ? safePrevState.bassCutoutTimer : 0.0;
+    const prevDropActiveTimer = (safePrevState && Number.isFinite(safePrevState.dropActiveTimer)) ? safePrevState.dropActiveTimer : 0.0;
+    const prevCooldownTimer = (safePrevState && Number.isFinite(safePrevState.cooldownTimer)) ? safePrevState.cooldownTimer : (safePrevState ? 0.0 : 1.5);
+
+    // Frame-rate independent time constants
+    const alphaFast = Math.min(1.0, dt * 7.0);   // ~140ms attack window
+    const alphaMed = Math.min(1.0, dt * 0.6);    // ~1.6s medium context window
+    const alphaLong = Math.min(1.0, dt * 0.10);  // ~10.0s slow background baseline floor
+
+    const avgEnergyFast = prevEnergyFast * (1 - alphaFast) + currentHeavyEnergy * alphaFast;
+    const avgEnergyMed = prevEnergyMed * (1 - alphaMed) + currentHeavyEnergy * alphaMed;
+    const avgEnergyLong = prevEnergyLong * (1 - alphaLong) + currentHeavyEnergy * alphaLong;
+
+    // Stable Drop Ratio: current energy surge relative to genuine long-term baseline floor
+    const baselineEnergyFloor = Math.max(0.10, avgEnergyLong);
+    const dropRatio = Math.max(0.1, avgEnergyFast / baselineEnergyFloor);
+    const energyRatio = totalRMS / Math.max(0.08, avgEnergyMed);
 
     // Transients
     const bassTransient = Math.max(0, bass.peak - avgBass * 0.8);
@@ -334,79 +519,128 @@ export function calculateAudioPhysics(params = {}) {
         rawHihatFlux = Math.min(1.0, (bands7.brilliance.peak * 0.7 + trebleTransient * 0.8) * trebleImpMult);
     }
 
-    // Dynamic Attack / Decay Smoothing for discrete beat impulses
+    // Dynamic Attack / Decay Smoothing for discrete beat impulses with high activation gating threshold
     const prevBeatPunch = (safePrevState && Number.isFinite(safePrevState.beatPunchDecay)) ? safePrevState.beatPunchDecay : 0.0;
     const prevSnareHit = (safePrevState && Number.isFinite(safePrevState.snareHitDecay)) ? safePrevState.snareHitDecay : 0.0;
 
-    const targetKickPunch = Math.min(1.0, (rawKickFlux * 1.5 + bassTransient * 1.2) * bassImpMult);
-    const beatPunch = targetKickPunch > prevBeatPunch ? targetKickPunch : prevBeatPunch * 0.80;
+    // Transient Onset Extraction above dynamic baseline
+    const kickTransientSpike = Math.max(0, rawKickFlux - 0.20);
+    const bassRise = Math.max(0, bass.peak - avgEnergyFast * 1.25);
+    const rawKickImpulse = (kickTransientSpike * 1.8 + bassRise * 1.5) * bassImpMult;
 
-    const targetSnareHit = Math.min(1.0, (rawSnareFlux * 1.4 + midTransient * 0.8) * midImpMult);
-    const snareHit = targetSnareHit > prevSnareHit ? targetSnareHit : prevSnareHit * 0.82;
+    // High Activation Threshold Gating: strictly ignores continuous volume/rumble and fires ONLY on true beat attacks
+    const PUNCH_GATE = 0.28;
+    const gatedKickPunch = rawKickImpulse > PUNCH_GATE ? Math.min(1.0, (rawKickImpulse - PUNCH_GATE) * 1.6) : 0.0;
+    
+    // Fast single-frame attack & snappy exponential decay (clears in ~60ms)
+    const beatPunch = gatedKickPunch > prevBeatPunch 
+        ? gatedKickPunch 
+        : (prevBeatPunch * 0.72 < 0.02 ? 0.0 : prevBeatPunch * 0.72);
 
-    const hihatTick = Math.min(1.0, (rawHihatFlux * 1.2 + trebleTransient * 0.6) * trebleImpMult);
+    const snareTransientSpike = Math.max(0, rawSnareFlux - 0.18);
+    const rawSnareImpulse = (snareTransientSpike * 1.6 + Math.max(0, mid.peak - avgMid * 1.25) * 1.2) * midImpMult;
+    const gatedSnareHit = rawSnareImpulse > 0.25 ? Math.min(1.0, (rawSnareImpulse - 0.25) * 1.5) : 0.0;
+    const snareHit = gatedSnareHit > prevSnareHit 
+        ? gatedSnareHit 
+        : (prevSnareHit * 0.75 < 0.02 ? 0.0 : prevSnareHit * 0.75);
 
-    // --- REAL-TIME BPM & TEMPO ESTIMATION ---
-    const lastTimestamp = (safePrevState && Number.isFinite(safePrevState.lastTimestamp)) ? safePrevState.lastTimestamp : timestamp;
-    const dt = Math.max(0.001, Math.min(0.2, (timestamp - lastTimestamp) / 1000.0));
+    const hihatTick = Math.min(1.0, Math.max(0, rawHihatFlux - 0.15) * 1.5 * trebleImpMult);
 
-    let kickOnsets = (safePrevState && Array.isArray(safePrevState.kickOnsets)) ? [...safePrevState.kickOnsets] : [];
-    let lastKickTime = (safePrevState && Number.isFinite(safePrevState.lastKickTime)) ? safePrevState.lastKickTime : 0;
+    // --- TIME-INVARIANT 10ms RESAMPLED NOVELTY BUFFER (4.0s = 400 Slices) ---
+    const SLICE_DURATION_MS = 10;
+    const NOVELTY_BUFFER_SIZE = 400; // 400 slices * 10ms = 4000ms history
+
+    let noveltyBuffer = (safePrevState && safePrevState.noveltyBuffer instanceof Float32Array && safePrevState.noveltyBuffer.length === NOVELTY_BUFFER_SIZE)
+        ? safePrevState.noveltyBuffer
+        : (safePrevState && Array.isArray(safePrevState.noveltyBuffer) && safePrevState.noveltyBuffer.length === NOVELTY_BUFFER_SIZE)
+            ? new Float32Array(safePrevState.noveltyBuffer)
+            : new Float32Array(NOVELTY_BUFFER_SIZE);
+
+    let noveltyIndex = (safePrevState && Number.isFinite(safePrevState.noveltyIndex)) ? safePrevState.noveltyIndex : 0;
+    let noveltyCount = (safePrevState && Number.isFinite(safePrevState.noveltyCount)) ? safePrevState.noveltyCount : 0;
+    let timeAccumulatorMs = (safePrevState && Number.isFinite(safePrevState.timeAccumulatorMs)) ? safePrevState.timeAccumulatorMs : 0;
+
     let estimatedBPM = (safePrevState && Number.isFinite(safePrevState.estimatedBPM)) ? safePrevState.estimatedBPM : 120;
-    let tempoConfidence = (safePrevState && Number.isFinite(safePrevState.tempoConfidence)) ? safePrevState.tempoConfidence : 0.5;
+    let tempoConfidence = (safePrevState && Number.isFinite(safePrevState.tempoConfidence)) ? safePrevState.tempoConfidence : 0.4;
+    let lastPeakBPM = (safePrevState && Number.isFinite(safePrevState.lastPeakBPM)) ? safePrevState.lastPeakBPM : 120;
+    let stableStreak = (safePrevState && Number.isFinite(safePrevState.stableStreak)) ? safePrevState.stableStreak : 0;
 
-    // Detect discrete Kick onset (true rising attack edge with minimum debounce time of 220ms)
-    const isKickOnset = targetKickPunch > 0.35 && targetKickPunch >= prevBeatPunch && (timestamp - lastKickTime) > 220;
-    if (isKickOnset) {
-        lastKickTime = timestamp;
-        kickOnsets.push(timestamp);
-        // Keep only onsets within the last 4 seconds
-        kickOnsets = kickOnsets.filter(t => (timestamp - t) <= 4000);
+    // Instantaneous multi-band novelty (Kick + Snare + Hi-Hat flux)
+    const currentNovelty = (rawKickFlux * 0.60 + rawSnareFlux * 0.30 + rawHihatFlux * 0.10);
 
-        if (kickOnsets.length >= 3) {
-            // Compute Inter-Onset Intervals (IOI)
-            const intervals = [];
-            for (let i = 1; i < kickOnsets.length; i++) {
-                const intervalMs = kickOnsets[i] - kickOnsets[i - 1];
-                if (intervalMs >= 240 && intervalMs <= 1100) { // 55 BPM to 250 BPM range
-                    intervals.push(intervalMs);
-                }
-            }
+    // Resample incoming audio frame into exact 10ms time slices (immune to monitor refresh rate)
+    timeAccumulatorMs += elapsedMs;
+    while (timeAccumulatorMs >= SLICE_DURATION_MS) {
+        timeAccumulatorMs -= SLICE_DURATION_MS;
+        noveltyBuffer[noveltyIndex] = currentNovelty;
+        noveltyIndex = (noveltyIndex + 1) % NOVELTY_BUFFER_SIZE;
+        if (noveltyCount < NOVELTY_BUFFER_SIZE) noveltyCount++;
+    }
 
-            if (intervals.length >= 2) {
-                // Calculate median interval
-                intervals.sort((a, b) => a - b);
-                const medianIntervalMs = intervals[Math.floor(intervals.length / 2)];
-                let instantBPM = 60000.0 / medianIntervalMs;
-
-                // Fold BPM into standard music range [70, 180]
-                while (instantBPM < 70) instantBPM *= 2;
-                while (instantBPM > 180) instantBPM /= 2;
-
-                // Smooth BPM update via EMA
-                estimatedBPM = estimatedBPM * 0.70 + instantBPM * 0.30;
-                tempoConfidence = Math.min(1.0, tempoConfidence + 0.15);
-            }
+    // Compute ACF BPM periodically every ~50ms (every 5 slices) when >= 1.2s (120 slices) of history is available
+    if (noveltyCount >= 120 && noveltyIndex % 5 === 0) {
+        const signal = new Float32Array(noveltyCount);
+        const start = (noveltyIndex - noveltyCount + NOVELTY_BUFFER_SIZE) % NOVELTY_BUFFER_SIZE;
+        for (let i = 0; i < noveltyCount; i++) {
+            signal[i] = noveltyBuffer[(start + i) % NOVELTY_BUFFER_SIZE];
         }
-    } else {
-        // Slow confidence decay when no onsets occur
-        tempoConfidence = Math.max(0.2, tempoConfidence - (dt * 0.05));
+
+        const acfResult = computeAutocorrelationBPM(signal, noveltyCount, SLICE_DURATION_MS);
+        if (acfResult && Number.isFinite(acfResult.bpm)) {
+            const bpmDiff = Math.abs(acfResult.bpm - lastPeakBPM);
+            if (bpmDiff < 2.5) {
+                stableStreak = Math.min(20, stableStreak + 1);
+            } else {
+                stableStreak = 0;
+            }
+            lastPeakBPM = acfResult.bpm;
+
+            // Fast lock on new tempo (0.85), smooth lock when stable (0.30)
+            const smoothFactor = stableStreak >= 4 ? 0.30 : 0.85;
+            estimatedBPM = estimatedBPM * (1 - smoothFactor) + acfResult.bpm * smoothFactor;
+            tempoConfidence = Math.min(1.0, 0.4 + Math.min(0.6, stableStreak * 0.15));
+        }
+    } else if (noveltyCount < 120) {
+        tempoConfidence = Math.min(0.4, (noveltyCount / 120) * 0.4);
     }
 
     const tempoBPM = Math.round(estimatedBPM);
 
-    // --- BEAT PHASE & HARMONIC OSCILLATION ---
-    let beatPhase = (safePrevState && Number.isFinite(safePrevState.beatPhase)) ? safePrevState.beatPhase : 0.0;
+    // --- 4/4 MEASURE BEAT TRACKER & METRONOME OSCILLATION ---
+    let totalBeatAccumulator = (safePrevState && Number.isFinite(safePrevState.totalBeatAccumulator)) ? safePrevState.totalBeatAccumulator : 0.0;
     const phaseDelta = (tempoBPM / 60.0) * dt;
-    beatPhase = (beatPhase + phaseDelta) % 1.0;
+    totalBeatAccumulator += phaseDelta;
 
-    // Harmonic beat breathing pulse (0.0 to 1.0)
-    const beatPulse = 0.5 + 0.5 * Math.sin(beatPhase * 2.0 * Math.PI - (Math.PI / 2));
+    // Fractional progress inside the current beat (0.0 to 1.0)
+    const beatPhase = totalBeatAccumulator % 1.0;
+    // Current beat in 4/4 measure (1, 2, 3, 4)
+    const currentMeasureBeat = (Math.floor(totalBeatAccumulator) % 4) + 1;
 
-    // Musical Song Tension (rising spectral centroid + rising energy before drops)
-    const songTension = Math.min(1.0, (spectralCentroid * 0.5 + energyRatio * 0.3 + bands7.presence.energy * 0.2));
+    // Sharp metronome beat pulse (1.0 on beat attack, smooth exponential decay to 0.0)
+    const beatPulse = Math.max(0.0, Math.pow(1.0 - beatPhase, 3.0));
 
-    // --- STROBE & DROP TRIGGER LOGIC ---
+    // --- MUSICAL SONG TENSION & PRE-DROP BUILD-UP ENGINE ---
+    // Tension increases with high-frequency brightness, riser sweeps and rising energy
+    const presenceEnergy = (bands7.presence.rms + bands7.brilliance.rms);
+    const songTension = Math.min(1.0, Math.max(0.0, (spectralCentroid * 0.45 + presenceEnergy * 0.35 + Math.min(1.0, dropRatio * 0.5) * 0.20)));
+
+    const alphaTension = Math.min(1.0, dt * 1.5);
+    const tensionEMA = prevTensionEMA * (1 - alphaTension) + songTension * alphaTension;
+    const isTensionSurging = (songTension > 0.35 && songTension > tensionEMA * 1.12) || (spectralCentroid > 0.40 && presenceEnergy > 0.22);
+
+    // Build-up accumulator (charges up during risers/sweeps/tension, slowly decays)
+    let buildUpScore = isTensionSurging
+        ? Math.min(1.0, prevBuildUpScore + dt * 0.6)
+        : Math.max(0.0, prevBuildUpScore - dt * 0.25);
+
+    // Pre-Drop Bass Cutout / Vacuum Detection (Sub-bass drops out right before the drop)
+    const isBassCutout = (bands7.subBass.rms < 0.08 && totalRMS > 0.08);
+    let bassCutoutTimer = isBassCutout
+        ? Math.min(2.0, prevBassCutoutTimer + dt)
+        : Math.max(0.0, prevBassCutoutTimer - dt * 1.2);
+    const hadRecentBassCutout = bassCutoutTimer > 0.25;
+
+    // --- DIRECT DYNAMIC & HIGH-VOLUME REACTIVE STROBE TRIGGER LOGIC ---
     const strobeEnabled = safeSettings.strobeEnabled !== undefined ? Boolean(safeSettings.strobeEnabled) : true;
     const dropMode = safeSettings.dropMode || 'Drop-Reaktiv';
     const strobeSensitivity = (typeof safeSettings.strobeSensitivity === 'number' && Number.isFinite(safeSettings.strobeSensitivity))
@@ -420,24 +654,33 @@ export function calculateAudioPhysics(params = {}) {
         : 10;
     const strobeTarget = safeSettings.strobeTarget || 'background';
 
-    const userThreshold = (typeof safeSettings.strobeThreshold === 'number' && Number.isFinite(safeSettings.strobeThreshold) && safeSettings.strobeThreshold > 0)
-        ? safeSettings.strobeThreshold
-        : Math.max(0.18, 0.45 / Math.max(0.1, strobeSensitivity));
+    const sensFactor = Math.max(0.2, strobeSensitivity);
+    // Dynamic energy calculation
+    const currentMusicEnergy = (bands7.kick.rms * 0.40 + bands7.subBass.rms * 0.35 + totalRMS * 0.25);
+    // User threshold: higher sensitivity (e.g. 1.5 - 2.0) -> lower threshold needed; lower sensitivity -> requires massive volume
+    const userThreshold = Math.max(0.15, 0.38 / Math.sqrt(sensFactor));
+    const dropThresholdRatio = Math.max(1.18, 1.35 / Math.sqrt(sensFactor));
 
-    const currentMusicEnergy = bass.rms * 0.60 + totalRMS * 0.40;
-    const dropThresholdRatio = Math.max(1.15, 1.30 / Math.max(0.1, strobeSensitivity));
-
-    let isDropTriggered = false;
+    let isStrobeActive = false;
     if (strobeEnabled) {
         if (dropMode === 'Continuous' || dropMode === 'Kontinuierlich') {
-            isDropTriggered = totalRMS > 0.05;
+            isStrobeActive = totalRMS > 0.05;
         } else {
-            const energyAboveThreshold = currentMusicEnergy >= userThreshold;
-            const dynamicEnergyJump = energyRatio > 1.25 || dropRatio > dropThresholdRatio;
-            const suddenBassJump = bassDelta > 0.15 || (bassTransient > 0.20 && bass.rms > 0.20) || beatPunch > 0.70;
-            isDropTriggered = energyAboveThreshold && (dynamicEnergyJump || suddenBassJump);
+            // 1. War gerade leise und wird plötzlich richtig laut (Dynamischer Energiesprung / Drop-Attacke)
+            const isDynamicLoudnessJump = (dropRatio >= dropThresholdRatio || energyRatio >= 1.30) && currentMusicEnergy >= (userThreshold * 0.55);
+            // 2. Richtig viel Lautstärke / extremer Pegel gerade da
+            const isHighVolumePeak = currentMusicEnergy >= userThreshold;
+            // 3. Plötzlicher Kick-Punch / perkussiver Wumms bei solider Lautstärke
+            const isHeavyPunchImpact = (beatPunch > 0.60 || kickTransientSpike > 0.16 || bassTransient > 0.20) && currentMusicEnergy >= (userThreshold * 0.60);
+
+            isStrobeActive = isDynamicLoudnessJump || isHighVolumePeak || isHeavyPunchImpact;
         }
     }
+
+    const isDropTriggered = isStrobeActive;
+    const isBuildUp = buildUpScore > 0.40 && !isDropTriggered;
+    const dropActiveTimer = isStrobeActive ? Math.min(2.0, prevDropActiveTimer + dt) : Math.max(0.0, prevDropActiveTimer - dt * 2.0);
+    const cooldownTimer = isStrobeActive ? 1.0 : Math.max(0.0, prevCooldownTimer - dt);
 
     // --- TEMPO-ADAPTIVE PHYSICS CALCULATIONS ---
 
@@ -471,11 +714,40 @@ export function calculateAudioPhysics(params = {}) {
 
     const turbulence = (baseTurbulence + (trebleTurbulence + midTurbulence + bassTurbulence) * beatSensMult);
 
-    // 4. Oscillation Speed & Flow Velocity (Tempo scaled)
+    // --- SUSTAINED ENERGY & MOMENTUM ENVELOPE ---
+    // Tracks whether the song is in an active/driving/fast part vs a calm/slow part
+    const prevSustainedEnergy = (safePrevState && Number.isFinite(safePrevState.sustainedEnergy)) ? safePrevState.sustainedEnergy : 0.0;
+    
+    // Instantaneous music drive level (volume, bass & transient rhythm density scaled by BPM tempo)
+    const tempoDriveFactor = Math.min(2.0, Math.max(0.6, tempoBPM / 120.0));
+    const currentActivityLevel = (totalRMS * 2.0 + bass.rms * 1.5 + (rawKickFlux + rawSnareFlux) * 0.9) * tempoDriveFactor;
+
+    // Threshold: below 0.18 is quiet/ambient; above 0.18 activates driving momentum
+    const ENERGY_DRIVE_THRESHOLD = 0.18;
+    let targetSustained = 0.0;
+    if (currentActivityLevel > ENERGY_DRIVE_THRESHOLD) {
+        targetSustained = Math.min(1.0, (currentActivityLevel - ENERGY_DRIVE_THRESHOLD) * 1.6);
+    }
+
+    // Smooth musical envelope:
+    // Fast attack (~150ms) to ramp up when energy starts
+    // Smooth release (~1.5s) to stay fast throughout active phases and gently glide down in calm parts
+    let sustainedEnergy = prevSustainedEnergy;
+    if (targetSustained > prevSustainedEnergy) {
+        sustainedEnergy = prevSustainedEnergy + (targetSustained - prevSustainedEnergy) * Math.min(1.0, dt * 6.5);
+    } else {
+        sustainedEnergy = prevSustainedEnergy - (prevSustainedEnergy - targetSustained) * Math.min(1.0, dt * 0.7);
+    }
+    sustainedEnergy = Math.max(0.0, Math.min(1.0, sustainedEnergy));
+
+    // 4. Dynamic Continuous Flow Velocity & Energy Acceleration (Non-linear wide-dynamic scaling)
     const tempoSpeedFactor = Math.min(2.0, Math.max(0.5, tempoBPM / 120.0));
-    const baseOscSpeed = 0.2 * baseSpeedMult * tempoSpeedFactor;
-    const energySpeed = (totalRMS * 1.5 + treble.rms * 1.8 * trebleImpMult + mid.rms * 1.0 * midImpMult + beatPunch * 1.2) * beatSensMult * peakSpeedMult;
-    const speed = baseOscSpeed + energySpeed;
+    const subBassEnergy = (bands7?.subBass?.rms || bass?.rms || 0);
+    const kickEnergy = (bands7?.kick?.rms || bass?.rms || 0);
+    const compositeLoudness = (subBassEnergy * 1.5 + kickEnergy * 1.3 + totalRMS * 1.2 + mid.rms * 0.6);
+    const dropBoostFactor = isDropTriggered ? 1.5 : 1.0;
+    const dynamicCurve = (compositeLoudness + compositeLoudness * compositeLoudness * 0.9) * dropBoostFactor;
+    const speed = baseSpeedMult * (1.0 + dynamicCurve * peakSpeedMult * 2.2) * tempoSpeedFactor;
     const flowSpeed = speed / Math.max(0.2, viscosity);
 
     // 5. Reactive Background Pulse
@@ -507,8 +779,11 @@ export function calculateAudioPhysics(params = {}) {
         beatPunch,
         snareHit,
         hihatTick,
+        sustainedEnergy,
+        motionDrive: sustainedEnergy,
         tempoBPM,
         tempoConfidence,
+        currentMeasureBeat,
         beatPhase,
         beatPulse,
         spectralCentroid,
@@ -524,13 +799,16 @@ export function calculateAudioPhysics(params = {}) {
         // Drop & Strobe outputs
         isDropTriggered,
         isStrobeActive: isDropTriggered,
-        dropRatio,
+        isBuildUp,
+        dropRatio: Number(dropRatio.toFixed(2)),
+        energyRatio: Number(energyRatio.toFixed(2)),
         currentMusicEnergy,
         strobeThreshold: userThreshold,
         strobeSpeed: strobeSpeedSetting,
         strobeTarget,
         strobeIntensity: strobeIntensitySetting,
         strobeActiveIntensity: isDropTriggered ? strobeIntensitySetting : 0.0,
+        buildUpScore,
 
         // Reactive background pulse output
         backgroundPulse,
@@ -555,20 +833,32 @@ export function calculateAudioPhysics(params = {}) {
 
         // Updated State for next frame
         state: {
+            warmupTimer,
             avgBass,
             avgMid,
             avgTreble,
-            avgBassShort,
-            avgBassLong,
-            avgRMSLong,
+            avgEnergyFast,
+            avgEnergyMed,
+            avgEnergyLong,
+            tensionEMA,
+            buildUpScore,
+            bassCutoutTimer,
+            dropActiveTimer,
+            cooldownTimer,
             prevSpectrum: currentSpectrumCopy,
-            kickOnsets,
-            lastKickTime,
+            noveltyBuffer,
+            noveltyIndex,
+            noveltyCount,
+            timeAccumulatorMs,
+            lastPeakBPM,
+            stableStreak,
             estimatedBPM,
             tempoConfidence,
+            totalBeatAccumulator,
             beatPhase,
             beatPunchDecay: beatPunch,
             snareHitDecay: snareHit,
+            sustainedEnergy,
             lastTimestamp: timestamp
         }
     };
