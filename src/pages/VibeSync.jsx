@@ -6,57 +6,39 @@ import '../components/vibesync/vibesync.css';
 const VibeSync = () => {
     const [showUI, setShowUI] = useState(false);
     const [audioStream, setAudioStream] = useState(null);
-    const [mode, setMode] = useState('liquid'); // liquid, quake, neon
 
-    // Per-Mode Settings
-    const [modeSettings, setModeSettings] = useState({
-        liquid: {
-            speed: 0, // 0 = Normal (1x)
-            sensitivity: 0, // 0 = Normal (1.5x)
-            baseRadius: 0, // 0 = Normal (1.0x)
-            bgColor: '#240024',
-            shrinkSpeed: 0, // 0 = Normal (0.1)
-            particleCount: 0, // 0 = Normal (1x)
-            strobeThreshold: 0, // 0 = Normal
-            strobeSpeed: 0, // 0 = Normal
-            bassImpact: 0, // 0 = Normal (1x)
-            midImpact: 0, // 0 = Normal (1x)
-            trebleImpact: 0, // 0 = Normal (1x)
-            symmetry: false
-        },
-        quake: {
-            speed: 1.0,
-            sensitivity: 1.5,
-            symmetry: false
-        },
-        neon: {
-            speed: 5.0,
-            sensitivity: 40, // 0-100 range for sensitivity
-            shakeScale: 50,
-            baseWind: 20,
-            windReactivity: 50,
-            smoothness: 80, // 0-100 (Snappy to Fat)
-            cloudDensity: 50,
-            rainAmount: 30, // Current base rain
-            lightningFlash: true,
-            lensDroplets: false,
-            floorFog: true,
-            retinalBurn: true,
-            autoCycle: true,
-            manualHue: 200,
-            colorShiftSpeed: 20
-        }
+    // Consolidated Settings State
+    const [settings, setSettings] = useState({
+        baseSpeed: 0, // Base Motion Speed (-10 to +10)
+        peakSpeed: 0, // Peak Speed Modifier (-10 to +10)
+        beatSensitivity: 0, // Beat-Größenempfindlichkeit (-10 to +10)
+        speed: 0, // Legacy fallback alias
+        sensitivity: 0, // Legacy fallback alias
+        baseRadius: 0, // Base Size (-10 to +10)
+        bgColor: '#14001a',
+        shrinkSpeed: 0, // Decay Rate (-10 to +10)
+        maxParticles: 12, // Max Particles number setting (min 5 enforced in engine)
+        strobeEnabled: true, // Master Strobe Switch
+        dropMode: 'Drop-Reaktiv', // Trigger Mode: Drop-Reaktiv | Kontinuierlich
+        strobeTarget: 'background', // Strobe Target: 'background' | 'particles'
+        strobeSensitivity: 1.0, // Energy Threshold Sensitivity (0.1 to 2.0)
+        strobeIntensity: 0.8, // Flash Intensity (0.1 to 1.0)
+        strobeSpeed: 10, // Flash Speed (1 to 20)
+        bassImpact: 0, // Frequency impact (-10 to +10)
+        midImpact: 0,
+        trebleImpact: 0,
+        symmetry: false
     });
 
-    // Custom Color State - Initialize with a preset (Cyberpunk)
+    // Custom Color State - Initialize with Cyberpunk palette
     const [colors, setColors] = useState([
-        '#ff00ff', '#00ffff', '#0000ff', '#ff0000', '#800080'
+        '#ff00ff', '#00ffff', '#7000ff', '#ff0055', '#00ffcc'
     ]);
 
     const [isHoveringPanel, setIsHoveringPanel] = useState(false);
     const uiTimeoutRef = useRef(null);
 
-    const resetTimeout = useCallback((delay = 1000) => {
+    const resetTimeout = useCallback((delay = 1200) => {
         if (uiTimeoutRef.current) clearTimeout(uiTimeoutRef.current);
         uiTimeoutRef.current = setTimeout(() => {
             setShowUI(false);
@@ -67,9 +49,9 @@ const VibeSync = () => {
     const handleMouseMove = useCallback(() => {
         setShowUI(true);
         if (!isHoveringPanel) {
-            resetTimeout(1000); // 1s timeout if outside panel
+            resetTimeout(1200); // 1.2s timeout if outside panel
         } else {
-            if (uiTimeoutRef.current) clearTimeout(uiTimeoutRef.current); // Stay open if inside
+            if (uiTimeoutRef.current) clearTimeout(uiTimeoutRef.current); // Stay open if inside panel
         }
     }, [isHoveringPanel, resetTimeout]);
 
@@ -80,7 +62,7 @@ const VibeSync = () => {
 
     const handlePanelLeave = useCallback(() => {
         setIsHoveringPanel(false);
-        resetTimeout(1000); // 1s timeout on leave
+        resetTimeout(1200);
     }, [resetTimeout]);
 
     useEffect(() => {
@@ -95,18 +77,15 @@ const VibeSync = () => {
         <div className={`vibesync-container ${showUI ? 'ui-active' : ''}`} onMouseMove={handleMouseMove} onClick={handleMouseMove}>
             <Visualizer
                 audioStream={audioStream}
-                mode={mode}
-                settings={modeSettings[mode]} // Pass only active mode settings
+                settings={settings}
                 colors={colors}
             />
             <GhostUI
                 show={showUI}
                 audioStream={audioStream}
                 setAudioStream={setAudioStream}
-                mode={mode}
-                setMode={setMode}
-                modeSettings={modeSettings}
-                setModeSettings={setModeSettings}
+                settings={settings}
+                setSettings={setSettings}
                 colors={colors}
                 setColors={setColors}
                 onPanelEnter={handlePanelEnter}

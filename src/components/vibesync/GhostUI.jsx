@@ -1,28 +1,39 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Mic, Radio, X, Monitor, Music, Zap, Activity, Waves, Sliders, Palette, Zap as LightningIcon, Droplets } from 'lucide-react';
+import { Mic, Radio, X, Sliders, Activity, Zap, Palette, Layers, Sun } from 'lucide-react';
 
 const PRESETS = {
-    cyberpunk: ['#ff00ff', '#00ffff', '#1a0b2e', '#ff0055', '#7000ff'],
+    cyberpunk: ['#ff00ff', '#00ffff', '#7000ff', '#ff0055', '#00ffcc'],
     deep_ocean: ['#001133', '#0044ff', '#00aaff', '#00ffff', '#002244'],
     sunset: ['#ff4400', '#ff8800', '#ff0055', '#440022', '#ffcc00'],
     matrix: ['#00ff00', '#003300', '#001100', '#33ff33', '#008800'],
 };
 
-const GhostUI = ({ show, audioStream, setAudioStream, mode, setMode, modeSettings, setModeSettings, colors, setColors, onPanelEnter, onPanelLeave }) => {
+const GhostUI = ({ show, audioStream, setAudioStream, settings, setSettings, colors, setColors, onPanelEnter, onPanelLeave }) => {
     const navigate = useNavigate();
+    const [showAudioModal, setShowAudioModal] = useState(false);
+
+    const requestSystemAudio = async () => {
+        setShowAudioModal(false);
+        try {
+            const stream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true });
+            if (stream) {
+                setAudioStream(stream);
+            }
+        } catch (err) {
+            console.error("Error accessing system audio:", err);
+        }
+    };
 
     const handleAudioInput = async (type) => {
         try {
-            let stream;
             if (type === 'mic') {
-                stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                if (stream) {
+                    setAudioStream(stream);
+                }
             } else if (type === 'system') {
-                alert("System Audio: Wähle im nächsten Fenster den Tab oder Bildschirm und aktiviere 'Audio teilen'.");
-                stream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true });
-            }
-            if (stream) {
-                setAudioStream(stream);
+                setShowAudioModal(true);
             }
         } catch (err) {
             console.error("Error accessing audio:", err);
@@ -40,210 +51,246 @@ const GhostUI = ({ show, audioStream, setAudioStream, mode, setMode, modeSetting
     };
 
     const updateSetting = (key, value) => {
-        setModeSettings(prev => ({
+        setSettings(prev => ({
             ...prev,
-            [mode]: {
-                ...prev[mode],
-                [key]: value
-            }
+            [key]: value
         }));
     };
 
-    const currentSettings = modeSettings[mode];
-
     return (
         <div className={`ghost-ui-overlay ${show ? 'visible' : ''}`}>
-            <button className="exit-btn" onClick={(e) => { e.stopPropagation(); navigate('/'); }}>
-                <X size={32} />
+            <button className="exit-btn" onClick={(e) => { e.stopPropagation(); navigate('/'); }} title="Exit VibeSync">
+                <X size={28} />
             </button>
+
+            {showAudioModal && (
+                <div className="audio-modal-overlay">
+                    <div className="audio-modal">
+                        <h3>System Audio Setup</h3>
+                        <p>To visualize system audio, a browser audio sharing prompt will open.</p>
+                        <p>Select <strong>Tab</strong> or <strong>Entire Screen</strong> and ensure <strong>Share audio</strong> is enabled.</p>
+                        <div className="modal-actions">
+                            <button className="vs-btn" onClick={() => setShowAudioModal(false)}>Cancel</button>
+                            <button className="vs-btn active" onClick={requestSystemAudio}>Got it, continue</button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <div
                 className="settings-panel"
                 onMouseEnter={onPanelEnter}
                 onMouseLeave={onPanelLeave}
             >
-                {/* Header Area: Audio and Mode Selection */}
+                {/* Header Area: Integrated Audio Source Selection */}
                 <div className="settings-header">
-                    <div className="header-group">
-                        <div className="section-title"><Mic size={14} /> Audio Source</div>
+                    <div className="header-group flex-fill">
+                        <div className="section-title"><Mic size={14} /> Audio Source Input</div>
                         <div className="button-group">
-                            <button className={`vs-btn ${audioStream?.getVideoTracks().length === 0 ? 'active' : ''}`} onClick={() => handleAudioInput('mic')}>Mic</button>
-                            <button className={`vs-btn ${audioStream?.getVideoTracks().length > 0 ? 'active' : ''}`} onClick={() => handleAudioInput('system')}>System</button>
-                        </div>
-                    </div>
-
-                    <div className="header-group" style={{ flex: 1 }}>
-                        <div className="section-title"><Monitor size={14} /> Visual Mode</div>
-                        <div className="button-group flex-fill">
-                            <button className={`vs-btn flex-fill ${mode === 'liquid' ? 'active' : ''}`} onClick={() => setMode('liquid')}><Waves size={16} /> Liquid</button>
-                            <button className={`vs-btn flex-fill ${mode === 'quake' ? 'active' : ''}`} onClick={() => setMode('quake')}><Activity size={16} /> Quake</button>
-                            <button className={`vs-btn flex-fill ${mode === 'neon' ? 'active' : ''}`} onClick={() => setMode('neon')}><Zap size={16} /> Neon</button>
+                            <button className={`vs-btn flex-fill ${audioStream?.getVideoTracks().length === 0 ? 'active' : ''}`} onClick={() => handleAudioInput('mic')}>
+                                <Mic size={14} /> Microphone
+                            </button>
+                            <button className={`vs-btn flex-fill ${audioStream?.getVideoTracks().length > 0 ? 'active' : ''}`} onClick={() => handleAudioInput('system')}>
+                                <Radio size={14} /> System Audio
+                            </button>
                         </div>
                     </div>
                 </div>
 
-                <div className="settings-content-area">
-                    {/* LIQUID MODE SETTINGS */}
-                    {mode === 'liquid' && (
-                        <div className="mode-settings-grid fade-in">
-                            <div className="setting-card">
-                                <div className="card-header"><Sliders size={14} /> Core Motion</div>
-                                <div className="setting-item">
-                                    <label>Motion Speed <span className="value-badge">{currentSettings.speed}</span></label>
-                                    <input type="range" min="-10" max="10" step="1" value={currentSettings.speed} onChange={(e) => updateSetting('speed', parseFloat(e.target.value))} />
-                                </div>
-                                <div className="setting-item">
-                                    <label>Beat Impact <span className="value-badge">{currentSettings.sensitivity}</span></label>
-                                    <input type="range" min="-10" max="10" step="1" value={currentSettings.sensitivity} onChange={(e) => updateSetting('sensitivity', parseFloat(e.target.value))} />
-                                </div>
-                                <div className="setting-item">
-                                    <label>Base Size <span className="value-badge">{currentSettings.baseRadius}</span></label>
-                                    <input type="range" min="-10" max="10" step="1" value={currentSettings.baseRadius} onChange={(e) => updateSetting('baseRadius', parseFloat(e.target.value))} />
-                                </div>
-                                <div className="setting-item">
-                                    <label>Decay Rate <span className="value-badge">{currentSettings.shrinkSpeed}</span></label>
-                                    <input type="range" min="-10" max="10" step="1" value={currentSettings.shrinkSpeed} onChange={(e) => updateSetting('shrinkSpeed', parseFloat(e.target.value))} />
-                                </div>
+                {/* Fixed Height Content Area with Custom Scrollbar */}
+                <div className="settings-content-area custom-scrollbar">
+                    <div className="mode-settings-grid fade-in">
+                        
+                        {/* Core Motion Controls */}
+                        <div className="setting-card">
+                            <div className="card-header"><Sliders size={14} /> Core Motion</div>
+                            <div className="setting-item">
+                                <label>Basis-Geschwindigkeit <span className="value-badge">{(settings.baseSpeed ?? settings.speed ?? 0) > 0 ? `+${settings.baseSpeed ?? settings.speed ?? 0}` : (settings.baseSpeed ?? settings.speed ?? 0)}</span></label>
+                                <input type="range" min="-10" max="10" step="1" value={settings.baseSpeed ?? settings.speed ?? 0} onChange={(e) => updateSetting('baseSpeed', parseFloat(e.target.value))} />
+                                <span className="subtext">Kontinuierliche Ambient-Bewegung</span>
                             </div>
-
-                            <div className="setting-card">
-                                <div className="card-header"><Activity size={14} /> Frequencies</div>
-                                <div className="freq-bars-container">
-                                    <div className="freq-bar">
-                                        <div className="freq-label">Low</div>
-                                        <input type="range" className="vertical-slider" min="-10" max="10" step="1" value={currentSettings.bassImpact || 0} onChange={(e) => updateSetting('bassImpact', parseInt(e.target.value))} />
-                                        <div className="freq-val">{currentSettings.bassImpact || 0}</div>
-                                    </div>
-                                    <div className="freq-bar">
-                                        <div className="freq-label">Mid</div>
-                                        <input type="range" className="vertical-slider" min="-10" max="10" step="1" value={currentSettings.midImpact || 0} onChange={(e) => updateSetting('midImpact', parseInt(e.target.value))} />
-                                        <div className="freq-val">{currentSettings.midImpact || 0}</div>
-                                    </div>
-                                    <div className="freq-bar">
-                                        <div className="freq-label">High</div>
-                                        <input type="range" className="vertical-slider" min="-10" max="10" step="1" value={currentSettings.trebleImpact || 0} onChange={(e) => updateSetting('trebleImpact', parseInt(e.target.value))} />
-                                        <div className="freq-val">{currentSettings.trebleImpact || 0}</div>
-                                    </div>
-                                </div>
+                            <div className="setting-item">
+                                <label>Peak-Geschwindigkeit <span className="value-badge">{(settings.peakSpeed ?? 0) > 0 ? `+${settings.peakSpeed ?? 0}` : (settings.peakSpeed ?? 0)}</span></label>
+                                <input type="range" min="-10" max="10" step="1" value={settings.peakSpeed ?? 0} onChange={(e) => updateSetting('peakSpeed', parseFloat(e.target.value))} />
+                                <span className="subtext">Tempo-Schub bei High-Energy Peaks</span>
                             </div>
-
-                            <div className="setting-card">
-                                <div className="card-header"><LightningIcon size={14} /> Advanced</div>
-                                <div className="setting-item">
-                                    <label>Particle Count <span className="value-badge">{currentSettings.particleCount}</span></label>
-                                    <input type="range" min="-10" max="10" step="1" value={currentSettings.particleCount} onChange={(e) => updateSetting('particleCount', parseInt(e.target.value))} />
-                                </div>
-                                <div className="setting-item">
-                                    <label>Strobe Auslöser <span className="value-badge">{currentSettings.strobeThreshold}</span></label>
-                                    <input type="range" min="-10" max="10" step="1" value={currentSettings.strobeThreshold || 0} onChange={(e) => updateSetting('strobeThreshold', parseInt(e.target.value))} />
-                                </div>
-                                <div className="setting-item">
-                                    <label>Strobe Schnelligkeit <span className="value-badge">{currentSettings.strobeSpeed}</span></label>
-                                    <input type="range" min="-10" max="10" step="1" value={currentSettings.strobeSpeed || 0} onChange={(e) => updateSetting('strobeSpeed', parseInt(e.target.value))} />
-                                </div>
+                            <div className="setting-item">
+                                <label>Beat-Größenempfindlichkeit <span className="value-badge">{(settings.beatSensitivity ?? settings.sensitivity ?? 0) > 0 ? `+${settings.beatSensitivity ?? settings.sensitivity ?? 0}` : (settings.beatSensitivity ?? settings.sensitivity ?? 0)}</span></label>
+                                <input type="range" min="-10" max="10" step="1" value={settings.beatSensitivity ?? settings.sensitivity ?? 0} onChange={(e) => updateSetting('beatSensitivity', parseFloat(e.target.value))} />
+                                <span className="subtext">Dynamische Expansion der Blobs bei Beats</span>
+                            </div>
+                            <div className="setting-item">
+                                <label>Base Size <span className="value-badge">{settings.baseRadius > 0 ? `+${settings.baseRadius}` : settings.baseRadius}</span></label>
+                                <input type="range" min="-10" max="10" step="1" value={settings.baseRadius} onChange={(e) => updateSetting('baseRadius', parseFloat(e.target.value))} />
+                            </div>
+                            <div className="setting-item">
+                                <label>Decay Rate <span className="value-badge">{settings.shrinkSpeed > 0 ? `+${settings.shrinkSpeed}` : settings.shrinkSpeed}</span></label>
+                                <input type="range" min="-10" max="10" step="1" value={settings.shrinkSpeed} onChange={(e) => updateSetting('shrinkSpeed', parseFloat(e.target.value))} />
                             </div>
                         </div>
-                    )}
 
-                    {/* QUAKE MODE SETTINGS */}
-                    {mode === 'quake' && (
-                        <div className="mode-settings-grid fade-in" style={{ gridTemplateColumns: '1fr' }}>
-                            <div className="setting-card">
-                                <div className="card-header"><Sliders size={14} /> Quake Physics</div>
-                                <div className="setting-item" style={{ maxWidth: '50%' }}>
-                                    <label>Motion Speed <span className="value-badge">{currentSettings.speed}</span></label>
-                                    <input type="range" min="-10" max="10" step="1" value={currentSettings.speed} onChange={(e) => updateSetting('speed', parseFloat(e.target.value))} />
-                                </div>
-                                <div className="setting-item" style={{ maxWidth: '50%' }}>
-                                    <label>Beat Impact <span className="value-badge">{currentSettings.sensitivity}</span></label>
-                                    <input type="range" min="0" max="5" step="0.1" value={currentSettings.sensitivity} onChange={(e) => updateSetting('sensitivity', parseFloat(e.target.value))} />
-                                </div>
-                                <div className="setting-item" style={{ maxWidth: '50%', marginTop: '1rem' }}>
-                                    <label>Symmetry Mode</label>
-                                    <button className={`vs-toggle-btn ${currentSettings.symmetry ? 'on' : 'off'}`} onClick={() => updateSetting('symmetry', !currentSettings.symmetry)}>
-                                        {currentSettings.symmetry ? 'ENABLED' : 'DISABLED'}
+                        {/* Frequency Rebalanced Sensitivities */}
+                        <div className="setting-card">
+                            <div className="card-header"><Activity size={14} /> Frequency Impact</div>
+                            <div className="setting-item">
+                                <label>Low / Bass Impact <span className="value-badge">{settings.bassImpact > 0 ? `+${settings.bassImpact}` : settings.bassImpact}</span></label>
+                                <input type="range" min="-10" max="10" step="1" value={settings.bassImpact || 0} onChange={(e) => updateSetting('bassImpact', parseInt(e.target.value, 10))} />
+                                <span className="subtext">Drives volumetric expansion & low-end pulses</span>
+                            </div>
+                            <div className="setting-item">
+                                <label>Mid Frequency Impact <span className="value-badge">{settings.midImpact > 0 ? `+${settings.midImpact}` : settings.midImpact}</span></label>
+                                <input type="range" min="-10" max="10" step="1" value={settings.midImpact || 0} onChange={(e) => updateSetting('midImpact', parseInt(e.target.value, 10))} />
+                                <span className="subtext">Drives body response & liquid surface ripples</span>
+                            </div>
+                            <div className="setting-item">
+                                <label>High / Treble Impact <span className="value-badge">{settings.trebleImpact > 0 ? `+${settings.trebleImpact}` : settings.trebleImpact}</span></label>
+                                <input type="range" min="-10" max="10" step="1" value={settings.trebleImpact || 0} onChange={(e) => updateSetting('trebleImpact', parseInt(e.target.value, 10))} />
+                                <span className="subtext">Drives high-end jitter & oscillation speed</span>
+                            </div>
+                        </div>
+
+                        {/* Strobe & Drop Effects Overhaul */}
+                        <div className="setting-card">
+                            <div className="card-header"><Zap size={14} /> Strobe & Drop FX</div>
+                            
+                            <div className="setting-item">
+                                <label>
+                                    <span>Master Strobe Switch</span>
+                                    <button 
+                                        type="button"
+                                        className={`vs-toggle-btn ${(settings.strobeEnabled ?? true) ? 'on' : ''}`}
+                                        onClick={() => updateSetting('strobeEnabled', !(settings.strobeEnabled ?? true))}
+                                    >
+                                        {(settings.strobeEnabled ?? true) ? 'ENABLED' : 'DISABLED'}
                                     </button>
-                                </div>
+                                </label>
+                            </div>
+
+                            {(settings.strobeEnabled ?? true) && (
+                                <>
+                                    <div className="setting-item">
+                                        <label>Drop Trigger Mode</label>
+                                        <select
+                                            className="vs-select"
+                                            value={settings.dropMode || 'Drop-Reaktiv'}
+                                            onChange={(e) => updateSetting('dropMode', e.target.value)}
+                                        >
+                                            <option value="Drop-Reaktiv">Drop-Reaktiv (Energy Threshold)</option>
+                                            <option value="Kontinuierlich">Kontinuierlich (Continuous)</option>
+                                        </select>
+                                        <span className="subtext">
+                                            Drop-Reaktiv mode triggers strictly on high-energy song drops and fast music parts.
+                                        </span>
+                                    </div>
+
+                                    <div className="setting-item">
+                                        <label>Strobe Target</label>
+                                        <select
+                                            className="vs-select"
+                                            value={settings.strobeTarget || 'background'}
+                                            onChange={(e) => updateSetting('strobeTarget', e.target.value)}
+                                        >
+                                            <option value="background">Background (BG Flashes, Particles Solid)</option>
+                                            <option value="particles">Particles (Particles Flash/Hide, BG Solid)</option>
+                                        </select>
+                                        <span className="subtext">
+                                            Select which layer flashes during strobe drop activation.
+                                        </span>
+                                    </div>
+
+                                    <div className="setting-item">
+                                        <label>
+                                            <span>Strobe-Geschwindigkeit</span>
+                                            <span className="value-badge">{settings.strobeSpeed ?? 10}</span>
+                                        </label>
+                                        <input 
+                                            type="range" 
+                                            min="1" 
+                                            max="20" 
+                                            step="1" 
+                                            value={settings.strobeSpeed ?? 10} 
+                                            onChange={(e) => updateSetting('strobeSpeed', parseInt(e.target.value, 10))} 
+                                        />
+                                        <span className="subtext">
+                                            Flash-Frequenz im Strobe-Modus (1 bis 20 Hz).
+                                        </span>
+                                    </div>
+
+                                    <div className="setting-item">
+                                        <label>
+                                            <span>Drop Sensitivity</span>
+                                            <span className="value-badge">{Number(settings.strobeSensitivity ?? 1.0).toFixed(1)}</span>
+                                        </label>
+                                        <input 
+                                            type="range" 
+                                            min="0.1" 
+                                            max="2.0" 
+                                            step="0.1" 
+                                            value={settings.strobeSensitivity ?? 1.0} 
+                                            onChange={(e) => updateSetting('strobeSensitivity', parseFloat(e.target.value))} 
+                                        />
+                                    </div>
+
+                                    <div className="setting-item">
+                                        <label>
+                                            <span>Flash Intensity</span>
+                                            <span className="value-badge">{Number(settings.strobeIntensity ?? 0.8).toFixed(2)}</span>
+                                        </label>
+                                        <input 
+                                            type="range" 
+                                            min="0.1" 
+                                            max="1.0" 
+                                            step="0.05" 
+                                            value={settings.strobeIntensity ?? 0.8} 
+                                            onChange={(e) => updateSetting('strobeIntensity', parseFloat(e.target.value))} 
+                                        />
+                                    </div>
+                                </>
+                            )}
+                        </div>
+
+                        {/* Particle Threshold & Layout Settings */}
+                        <div className="setting-card">
+                            <div className="card-header"><Layers size={14} /> Particle Engine</div>
+                            <div className="setting-item">
+                                <label>Max Particles (Min 5) <span className="value-badge">{settings.maxParticles ?? 12}</span></label>
+                                <input 
+                                    type="number" 
+                                    min="5" 
+                                    max="16" 
+                                    step="1"
+                                    className="number-input"
+                                    value={settings.maxParticles ?? 12} 
+                                    onChange={(e) => {
+                                        const val = parseInt(e.target.value, 10);
+                                        if (!isNaN(val)) {
+                                            updateSetting('maxParticles', Math.min(16, Math.max(5, val)));
+                                        }
+                                    }} 
+                                />
+                                <span className="subtext">Engine guarantees a minimum threshold of 5 visible particles.</span>
+                            </div>
+
+                            <div className="setting-item" style={{ marginTop: '8px' }}>
+                                <label>
+                                    <span>Symmetry Mode</span>
+                                    <button 
+                                        type="button"
+                                        className={`vs-toggle-btn ${settings.symmetry ? 'on' : ''}`}
+                                        onClick={() => updateSetting('symmetry', !settings.symmetry)}
+                                    >
+                                        {settings.symmetry ? 'ON' : 'OFF'}
+                                    </button>
+                                </label>
                             </div>
                         </div>
-                    )}
 
-                    {/* NEON MODE SETTINGS */}
-                    {mode === 'neon' && (
-                        <div className="mode-settings-grid fade-in">
-                            <div className="setting-card col-span-2">
-                                <div className="card-header"><Activity size={14} /> Layer B: Physics</div>
-                                <div className="grid-2-cols">
-                                    <div className="setting-item">
-                                        <label>Shake Force <span className="value-badge">{currentSettings.shakeScale}%</span></label>
-                                        <input type="range" min="0" max="100" step="1" value={currentSettings.shakeScale} onChange={(e) => updateSetting('shakeScale', parseInt(e.target.value))} />
-                                    </div>
-                                    <div className="setting-item">
-                                        <label>Wind Reactivity <span className="value-badge">{currentSettings.windReactivity}%</span></label>
-                                        <input type="range" min="0" max="100" step="1" value={currentSettings.windReactivity} onChange={(e) => updateSetting('windReactivity', parseInt(e.target.value))} />
-                                    </div>
-                                    <div className="setting-item col-span-2">
-                                        <label>Smoothness (Decay) <span className="value-badge">{currentSettings.smoothness}%</span></label>
-                                        <input type="range" min="0" max="100" step="1" value={currentSettings.smoothness} onChange={(e) => updateSetting('smoothness', parseInt(e.target.value))} />
-                                        <div className="slider-labels">
-                                            <span>Snappy</span>
-                                            <span>Heavy</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="setting-card">
-                                <div className="card-header"><Droplets size={14} /> Layer A: Atmosphere</div>
-                                <div className="setting-item">
-                                    <label>Base Rain <span className="value-badge">{currentSettings.rainAmount}%</span></label>
-                                    <input type="range" min="0" max="100" step="1" value={currentSettings.rainAmount} onChange={(e) => updateSetting('rainAmount', parseInt(e.target.value))} />
-                                </div>
-                                <div className="setting-item">
-                                    <label>Base Wind <span className="value-badge">{currentSettings.baseWind}%</span></label>
-                                    <input type="range" min="0" max="100" step="1" value={currentSettings.baseWind} onChange={(e) => updateSetting('baseWind', parseInt(e.target.value))} />
-                                </div>
-                                <div className="setting-item">
-                                    <label>Cloud Density <span className="value-badge">{currentSettings.cloudDensity}%</span></label>
-                                    <input type="range" min="0" max="100" step="1" value={currentSettings.cloudDensity} onChange={(e) => updateSetting('cloudDensity', parseInt(e.target.value))} />
-                                </div>
-                                <div className="setting-item">
-                                    <label>Lightning Focus <span className="value-badge">{currentSettings.sensitivity}%</span></label>
-                                    <input type="range" min="0" max="100" step="1" value={currentSettings.sensitivity} onChange={(e) => updateSetting('sensitivity', parseInt(e.target.value))} />
-                                </div>
-                            </div>
-
-                            <div className="setting-card toggle-grid">
-                                <button className={`vs-toggle-btn ${currentSettings.lensDroplets ? 'on' : ''}`} onClick={() => updateSetting('lensDroplets', !currentSettings.lensDroplets)}>Wet Lens</button>
-                                <button className={`vs-toggle-btn ${currentSettings.lightningFlash ? 'on' : ''}`} onClick={() => updateSetting('lightningFlash', !currentSettings.lightningFlash)}>Flash Sync</button>
-                                <button className={`vs-toggle-btn ${currentSettings.floorFog ? 'on' : ''}`} onClick={() => updateSetting('floorFog', !currentSettings.floorFog)}>Floor Fog</button>
-                                <button className={`vs-toggle-btn ${currentSettings.retinalBurn ? 'on' : ''}`} onClick={() => updateSetting('retinalBurn', !currentSettings.retinalBurn)}>Retina Burn</button>
-                                <button className={`vs-toggle-btn ${currentSettings.autoCycle ? 'on' : ''}`} onClick={() => updateSetting('autoCycle', !currentSettings.autoCycle)}>Auto Theme</button>
-                            </div>
-
-                            <div className="setting-card">
-                                <div className="card-header"><Palette size={14} /> Color Shift</div>
-                                {!currentSettings.autoCycle ? (
-                                    <div className="setting-item">
-                                        <label>Manual Hue</label>
-                                        <div className="hue-slider-wrapper">
-                                            <input type="range" className="hue-slider" min="0" max="360" step="1" value={currentSettings.manualHue} onChange={(e) => updateSetting('manualHue', parseInt(e.target.value))} />
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="setting-item">
-                                        <label>Auto Shift Speed <span className="value-badge">{currentSettings.colorShiftSpeed}%</span></label>
-                                        <input type="range" min="0" max="100" step="1" value={currentSettings.colorShiftSpeed} onChange={(e) => updateSetting('colorShiftSpeed', parseInt(e.target.value))} />
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
+                    </div>
                 </div>
 
-                {/* Footer Area: Global Colors */}
+                {/* Integrated Footer Area: Palette Swatches & Custom Background Tint */}
                 <div className="settings-footer">
-                    <div className="section-title"><Palette size={14} /> Palette</div>
+                    <div className="section-title"><Palette size={14} /> Color Palette Swatches</div>
                     <div className="footer-content">
                         <div className="presets-group">
                             <button className="vs-btn" onClick={() => handlePreset('cyberpunk')}>Cyberpunk</button>
@@ -253,13 +300,13 @@ const GhostUI = ({ show, audioStream, setAudioStream, mode, setMode, modeSetting
                         </div>
                         <div className="color-swatches">
                             {colors.map((c, i) => (
-                                <input key={i} type="color" value={c} onChange={(e) => handleColorChange(i, e.target.value)} />
+                                <input key={i} type="color" value={c} onChange={(e) => handleColorChange(i, e.target.value)} title={`Color Swatch ${i + 1}`} />
                             ))}
-                            <div className="setting-item bg-color-item" style={{ marginLeft: 'auto' }}>
-                                <label style={{ fontSize: '0.7rem', marginBottom: 0, marginRight: '10px' }}>BG Tint (Liq)</label>
-                                <input type="color" value={modeSettings.liquid.bgColor} onChange={(e) => {
-                                    setModeSettings(prev => ({ ...prev, liquid: { ...prev.liquid, bgColor: e.target.value } }))
-                                }} />
+                            <div className="setting-item bg-color-item" style={{ marginLeft: '12px' }}>
+                                <label style={{ fontSize: '0.75rem', marginBottom: 0, marginRight: '8px' }}>BG Tint</label>
+                                <input type="color" value={settings.bgColor} onChange={(e) => {
+                                    setSettings(prev => ({ ...prev, bgColor: e.target.value }))
+                                }} title="Background Base Color" />
                             </div>
                         </div>
                     </div>
