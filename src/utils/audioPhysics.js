@@ -477,10 +477,20 @@ export function calculateAudioPhysics(params = {}) {
     const prevDropActiveTimer = (safePrevState && Number.isFinite(safePrevState.dropActiveTimer)) ? safePrevState.dropActiveTimer : 0.0;
     const prevCooldownTimer = (safePrevState && Number.isFinite(safePrevState.cooldownTimer)) ? safePrevState.cooldownTimer : (safePrevState ? 0.0 : 1.5);
 
+    // Seconds of continuous music. Until the warm-up is over the long baseline adapts fast,
+    // so starting a song (or switching the audio source) is not mistaken for a drop.
+    // A prevState without this field (older callers) counts as already warmed up.
+    const MUSIC_WARMUP_S = 4.0;
+    const prevMusicTimer = safePrevState
+        ? (Number.isFinite(safePrevState.musicTimer) ? safePrevState.musicTimer : MUSIC_WARMUP_S)
+        : 0.0;
+    const musicTimer = totalRMS > 0.03 ? Math.min(60.0, prevMusicTimer + dt) : 0.0;
+    const isWarmingUp = musicTimer < MUSIC_WARMUP_S;
+
     // Frame-rate independent time constants
     const alphaFast = Math.min(1.0, dt * 7.0);   // ~140ms attack window
     const alphaMed = Math.min(1.0, dt * 0.6);    // ~1.6s medium context window
-    const alphaLong = Math.min(1.0, dt * 0.10);  // ~10.0s slow background baseline floor
+    const alphaLong = Math.min(1.0, dt * (isWarmingUp ? 1.5 : 0.10));  // ~10.0s slow background baseline floor (fast during warm-up)
 
     const avgEnergyFast = prevEnergyFast * (1 - alphaFast) + currentHeavyEnergy * alphaFast;
     const avgEnergyMed = prevEnergyMed * (1 - alphaMed) + currentHeavyEnergy * alphaMed;
@@ -661,26 +671,34 @@ export function calculateAudioPhysics(params = {}) {
     const userThreshold = Math.max(0.15, 0.38 / Math.sqrt(sensFactor));
     const dropThresholdRatio = Math.max(1.18, 1.35 / Math.sqrt(sensFactor));
 
+    // --- DROP DETECTION (event + hold + cooldown) ---
+    // A drop is a sudden surge of heavy energy against the ~10s baseline, or the bass slamming
+    // back in after a pre-drop bass cutout. Plain loudness is NOT a drop: steady loud music keeps
+    // dropRatio near 1.0 because the baseline follows it. Once detected, the drop state is held
+    // for DROP_HOLD_S and cannot re-trigger before DROP_COOLDOWN_S has passed and the energy has
+    // settled back near its baseline (re-arm), so one drop section produces one strobe burst.
+    const DROP_HOLD_S = 2.5;
+    const DROP_COOLDOWN_S = 6.0;
+    const isEnergySurge = dropRatio >= dropThresholdRatio && currentMusicEnergy >= (userThreshold * 0.55);
+    const isBassReturn = hadRecentBassCutout && beatPunch > 0.5 && currentMusicEnergy >= (userThreshold * 0.5);
+    const prevDropArmed = (safePrevState && typeof safePrevState.dropArmed === 'boolean') ? safePrevState.dropArmed : true;
+    const isDropOnset = prevDropArmed && !isWarmingUp && prevCooldownTimer <= 0 && prevDropActiveTimer <= 0 && (isEnergySurge || isBassReturn);
+
+    const dropActiveTimer = isDropOnset ? DROP_HOLD_S : Math.max(0.0, prevDropActiveTimer - dt);
+    const cooldownTimer = isDropOnset ? DROP_COOLDOWN_S : Math.max(0.0, prevCooldownTimer - dt);
+    const isDropTriggered = dropActiveTimer > 0;
+    const dropArmed = isDropOnset ? false : (prevDropArmed || (cooldownTimer <= 0 && avgEnergyMed / baselineEnergyFloor < 1.08));
+
     let isStrobeActive = false;
     if (strobeEnabled) {
         if (dropMode === 'Continuous' || dropMode === 'Kontinuierlich') {
             isStrobeActive = totalRMS > 0.05;
         } else {
-            // 1. War gerade leise und wird plötzlich richtig laut (Dynamischer Energiesprung / Drop-Attacke)
-            const isDynamicLoudnessJump = (dropRatio >= dropThresholdRatio || energyRatio >= 1.30) && currentMusicEnergy >= (userThreshold * 0.55);
-            // 2. Richtig viel Lautstärke / extremer Pegel gerade da
-            const isHighVolumePeak = currentMusicEnergy >= userThreshold;
-            // 3. Plötzlicher Kick-Punch / perkussiver Wumms bei solider Lautstärke
-            const isHeavyPunchImpact = (beatPunch > 0.60 || kickTransientSpike > 0.16 || bassTransient > 0.20) && currentMusicEnergy >= (userThreshold * 0.60);
-
-            isStrobeActive = isDynamicLoudnessJump || isHighVolumePeak || isHeavyPunchImpact;
+            isStrobeActive = isDropTriggered;
         }
     }
 
-    const isDropTriggered = isStrobeActive;
     const isBuildUp = buildUpScore > 0.40 && !isDropTriggered;
-    const dropActiveTimer = isStrobeActive ? Math.min(2.0, prevDropActiveTimer + dt) : Math.max(0.0, prevDropActiveTimer - dt * 2.0);
-    const cooldownTimer = isStrobeActive ? 1.0 : Math.max(0.0, prevCooldownTimer - dt);
 
     // --- TEMPO-ADAPTIVE PHYSICS CALCULATIONS ---
 
@@ -798,7 +816,7 @@ export function calculateAudioPhysics(params = {}) {
 
         // Drop & Strobe outputs
         isDropTriggered,
-        isStrobeActive: isDropTriggered,
+        isStrobeActive,
         isBuildUp,
         dropRatio: Number(dropRatio.toFixed(2)),
         energyRatio: Number(energyRatio.toFixed(2)),
@@ -807,7 +825,7 @@ export function calculateAudioPhysics(params = {}) {
         strobeSpeed: strobeSpeedSetting,
         strobeTarget,
         strobeIntensity: strobeIntensitySetting,
-        strobeActiveIntensity: isDropTriggered ? strobeIntensitySetting : 0.0,
+        strobeActiveIntensity: isStrobeActive ? strobeIntensitySetting : 0.0,
         buildUpScore,
 
         // Reactive background pulse output
@@ -845,6 +863,8 @@ export function calculateAudioPhysics(params = {}) {
             bassCutoutTimer,
             dropActiveTimer,
             cooldownTimer,
+            musicTimer,
+            dropArmed,
             prevSpectrum: currentSpectrumCopy,
             noveltyBuffer,
             noveltyIndex,
