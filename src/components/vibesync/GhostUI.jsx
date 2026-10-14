@@ -154,7 +154,9 @@ const GhostUI = ({
             if (stream) {
                 const audioTracks = stream.getAudioTracks();
                 if (!audioTracks || audioTracks.length === 0) {
-                    alert("Achtung: Im Dialog wurde kein Audio freigegeben. Bitte aktiviere das Häkchen 'Audio teilen' / 'System-Audio teilen', damit VibSync den Sound analysieren kann.");
+                    stream.getTracks().forEach((t) => t.stop());
+                    alert("Achtung: Im Dialog wurde kein Audio freigegeben. Unter Windows: 'Gesamter Bildschirm' wählen und das Häkchen 'Systemaudio teilen' aktivieren (bei einem Tab: 'Tab-Audio teilen'), damit VibSync den Sound analysieren kann.");
+                    return;
                 }
                 setAudioStream(stream);
             }
@@ -246,15 +248,6 @@ const GhostUI = ({
         });
     };
 
-    const bands7 = liveMetrics?.bands7 || {};
-    const subBassPct = Math.min(100, Math.round((bands7.subBass?.rms || 0) * 100));
-    const kickPct = Math.min(100, Math.round((bands7.kick?.rms || 0) * 100));
-    const lowMidPct = Math.min(100, Math.round((bands7.lowMid?.rms || 0) * 100));
-    const midPct = Math.min(100, Math.round((bands7.mid?.rms || 0) * 100));
-    const presPct = Math.min(100, Math.round((bands7.presence?.rms || 0) * 100));
-    const brillPct = Math.min(100, Math.round((bands7.brilliance?.rms || 0) * 100));
-    const airPct = Math.min(100, Math.round((bands7.air?.rms || 0) * 100));
-
     const beatPunchVal = liveMetrics?.beatPunch || 0;
     const beatPunchPct = Math.min(100, Math.round(beatPunchVal * 100));
     const snareHitPct = Math.min(100, Math.round((liveMetrics?.snareHit || 0) * 100));
@@ -265,9 +258,6 @@ const GhostUI = ({
     const isPunchFlash = beatPunchVal > 0.35;
     const currentMeasureBeat = liveMetrics?.currentMeasureBeat || 1;
 
-    const bassDom = Math.round((liveMetrics?.bassDominance || 0.33) * 100);
-    const midDom = Math.round((liveMetrics?.midDominance || 0.33) * 100);
-    const trebDom = Math.round((liveMetrics?.trebleDominance || 0.33) * 100);
 
     const centroid = liveMetrics?.spectralCentroid || 0;
     const centroidKHz = (centroid * 8).toFixed(1);

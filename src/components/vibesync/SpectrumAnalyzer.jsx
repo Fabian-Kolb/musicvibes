@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useMemo } from 'react';
+import React, { useRef, useEffect, useMemo } from 'react';
 import { Activity, Zap, Compass, BarChart2, Radio, Layers, Flame } from 'lucide-react';
 
 const BAND_CONFIGS = [
@@ -119,6 +119,12 @@ const SpectrumAnalyzer = ({ liveMetrics, audioStream }) => {
     const bandPeaksRef = useRef(new Float32Array(7));
     const bandPeakHoldTimerRef = useRef(new Float32Array(7));
     const animFrameRef = useRef(null);
+    // The RTA loop reads the newest metrics from a ref, so it is not torn down and restarted
+    // on every metrics update (~30x per second).
+    const liveMetricsRef = useRef(liveMetrics);
+    useEffect(() => {
+        liveMetricsRef.current = liveMetrics;
+    }, [liveMetrics]);
 
     // Track real-time peak holds and draw 60 FPS RTA Canvas
     useEffect(() => {
@@ -223,9 +229,9 @@ const SpectrumAnalyzer = ({ liveMetrics, audioStream }) => {
             });
 
             // 4. Draw continuous FFT spectrum curve (Instantaneous RTA)
-            const rawFreq = liveMetrics?.frequencyData;
+            const rawFreq = liveMetricsRef.current?.frequencyData;
             const fftLen = rawFreq ? rawFreq.length : 512;
-            const sampleRate = 44100;
+            const sampleRate = liveMetricsRef.current?.sampleRate || 44100;
             const nyquist = sampleRate / 2;
             const hzPerBin = nyquist / fftLen;
 
@@ -333,7 +339,7 @@ const SpectrumAnalyzer = ({ liveMetrics, audioStream }) => {
         return () => {
             if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
         };
-    }, [liveMetrics]);
+    }, []);
 
     // Compute live 7-Band metrics, dBFS & Peak Hold
     const bands7 = liveMetrics?.bands7 || {};

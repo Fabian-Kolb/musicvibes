@@ -13,7 +13,7 @@ const DEFAULT_SETTINGS = {
     bgColor: '#160829',
     shrinkSpeed: 0, // Decay Rate (-10 to +10)
     maxParticles: 12, // Max Particles number setting (min 5 enforced in engine)
-    strobeEnabled: true, // Master Strobe Switch
+    strobeEnabled: false, // Master Strobe Switch (off by default: fast full-screen flashes are a photosensitivity risk)
     dropMode: 'Drop-Reaktiv', // Trigger Mode: Drop-Reaktiv | Kontinuierlich
     strobeTarget: 'background', // Strobe Target: 'background' | 'particles'
     strobeSensitivity: 1.0, // Energy Threshold Sensitivity (0.1 to 2.0)
@@ -59,7 +59,36 @@ const DEFAULT_COLORS = ['#ff00ff', '#00ffff', '#7000ff', '#ff0055', '#00ffcc'];
 
 const VibeSync = () => {
     const [showUI, setShowUI] = useState(false);
-    const [audioStream, setAudioStream] = useState(null);
+    const [audioStream, setAudioStreamState] = useState(null);
+    const audioStreamRef = useRef(null);
+
+    // Switching the audio source must release the previous capture, otherwise the old
+    // microphone / screen share keeps running in the background.
+    const setAudioStream = useCallback((stream) => {
+        const prev = audioStreamRef.current;
+        if (prev && prev !== stream) {
+            prev.getTracks().forEach((t) => t.stop());
+        }
+        audioStreamRef.current = stream;
+        setAudioStreamState(stream);
+    }, []);
+
+    // When the user ends the share in the browser bar (or unplugs the mic), drop the stream
+    // so the UI shows that no source is active instead of silently freezing.
+    useEffect(() => {
+        if (!audioStream) return;
+        const tracks = audioStream.getAudioTracks();
+        const handleEnded = () => {
+            if (tracks.every((t) => t.readyState === 'ended')) setAudioStream(null);
+        };
+        tracks.forEach((t) => t.addEventListener('ended', handleEnded));
+        return () => tracks.forEach((t) => t.removeEventListener('ended', handleEnded));
+    }, [audioStream, setAudioStream]);
+
+    // Release the capture when leaving the page.
+    useEffect(() => () => {
+        if (audioStreamRef.current) audioStreamRef.current.getTracks().forEach((t) => t.stop());
+    }, []);
 
     // Consolidated Settings State with localStorage persistence
     const [settings, setSettings] = useState(() => {
@@ -160,8 +189,14 @@ const VibeSync = () => {
         resetTimeout(1200);
     }, [resetTimeout]);
 
+    // The visualizer reports metrics ~30x per second. Only push them into React state while
+    // the panel is visible, so the hidden UI does not re-render the whole page constantly.
+    const showUIRef = useRef(showUI);
+    useEffect(() => {
+        showUIRef.current = showUI;
+    }, [showUI]);
     const handleAudioMetrics = useCallback((metrics) => {
-        setLiveMetrics(metrics);
+        if (showUIRef.current) setLiveMetrics(metrics);
     }, []);
 
     useEffect(() => {

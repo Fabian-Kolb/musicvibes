@@ -708,13 +708,13 @@ const Visualizer = ({ audioStream, settings, colors, manualTriggerFX, onAudioMet
         const canvas = canvasRef.current;
         if (!canvas) return;
 
-        const webglCtx = initWebGL(canvas);
+        let webglCtx = initWebGL(canvas);
         if (!webglCtx) {
             console.error("Failed to initialize WebGL context.");
             return;
         }
 
-        const { gl, locs, positionBuffer } = webglCtx;
+        let { gl, locs, positionBuffer } = webglCtx;
         const blobsData = new Float32Array(256); // 64 Blobs * 4
         const blobColorsData = new Float32Array(192); // 64 Blobs * 3
 
@@ -851,7 +851,8 @@ const Visualizer = ({ audioStream, settings, colors, manualTriggerFX, onAudioMet
                     scaleMultiplier: audioPhysics.scaleMultiplier,
                     backgroundPulse: audioPhysics.backgroundPulse,
                     activeFX: activeFXData,
-                    frequencyData: frequencyData ? new Uint8Array(frequencyData) : null
+                    frequencyData: frequencyData ? new Uint8Array(frequencyData) : null,
+                    sampleRate
                 });
             }
 
@@ -874,12 +875,11 @@ const Visualizer = ({ audioStream, settings, colors, manualTriggerFX, onAudioMet
             const strobeEnabled = safeSettings.strobeEnabled !== undefined ? Boolean(safeSettings.strobeEnabled) : true;
             const strobeIntensitySetting = typeof safeSettings.strobeIntensity === 'number' ? safeSettings.strobeIntensity : 0.8;
             const strobeSpeedSetting = typeof safeSettings.strobeSpeed === 'number' ? safeSettings.strobeSpeed : (audioPhysics.strobeSpeed || 10);
-            const strobeTarget = safeSettings.strobeTarget || 'background';
 
             const flashFreq = 5.0 + (strobeSpeedSetting * 1.0);
             const currentTimeSec = performance.now() / 1000.0;
 
-            if (strobeEnabled && (audioPhysics.isStrobeActive || audioPhysics.isDropTriggered)) {
+            if (strobeEnabled && audioPhysics.isStrobeActive) {
                 strobeEnvelopeRef.current = Math.min(1.0, strobeEnvelopeRef.current + 0.35);
             } else {
                 strobeEnvelopeRef.current *= 0.78;
@@ -902,8 +902,10 @@ const Visualizer = ({ audioStream, settings, colors, manualTriggerFX, onAudioMet
             const compositeLoudness = (subBassEnergy * 1.5 + kickEnergy * 1.3 + currentRMS * 1.2 + midEnergy * 0.6);
             const rawEnergy = Math.min(1.0, Math.max(0.0, currentRMS * 4.0 + (audioPhysics.bass?.rms || 0) * 2.5));
 
-            // Dynamic Sound Presence Gate: smooth full standstill (v=0) when music is silent or paused
-            const isAudioSilent = !audioStream || rawEnergy < 0.012;
+            // Dynamic Sound Presence Gate: smooth full standstill (v=0) when music is silent or paused.
+            // Read the live analyser ref: this render loop is created once on mount, so the
+            // audioStream prop captured here would stay null forever.
+            const isAudioSilent = !analyserRef.current || rawEnergy < 0.012;
             const targetSoundPresence = isAudioSilent ? 0.0 : Math.min(1.0, (rawEnergy - 0.012) / 0.09);
 
             if (targetSoundPresence > soundPresenceRef.current) {
@@ -914,8 +916,6 @@ const Visualizer = ({ audioStream, settings, colors, manualTriggerFX, onAudioMet
                 soundPresenceRef.current += (targetSoundPresence - soundPresenceRef.current) * 0.035;
             }
             const soundPresence = Math.max(0.0, Math.min(1.0, soundPresenceRef.current));
-            // silenceFactor: 1.0 in absolute silence, 0.0 during active music
-            const silenceFactor = Math.pow(Math.max(0, 1.0 - soundPresence), 1.6);
 
             // Responsive envelope tracking continuous volume without harsh clipping ceiling
             if (compositeLoudness > loudnessEnvelopeRef.current) {
@@ -1298,16 +1298,34 @@ const Visualizer = ({ audioStream, settings, colors, manualTriggerFX, onAudioMet
         window.addEventListener('resize', handleResize);
         handleResize();
 
+        // GPU driver resets, sleep/resume or too many contexts can drop the WebGL context.
+        // Without this the canvas stays black until the page is reloaded.
+        const handleContextLost = (e) => {
+            e.preventDefault();
+            if (requestRef.current) cancelAnimationFrame(requestRef.current);
+            requestRef.current = null;
+        };
+        const handleContextRestored = () => {
+            webglCtx = initWebGL(canvas);
+            if (!webglCtx) return;
+            ({ gl, locs, positionBuffer } = webglCtx);
+            requestRef.current = requestAnimationFrame(render);
+        };
+        canvas.addEventListener('webglcontextlost', handleContextLost);
+        canvas.addEventListener('webglcontextrestored', handleContextRestored);
+
         requestRef.current = requestAnimationFrame(render);
 
         return () => {
             window.removeEventListener('resize', handleResize);
+            canvas.removeEventListener('webglcontextlost', handleContextLost);
+            canvas.removeEventListener('webglcontextrestored', handleContextRestored);
             if (requestRef.current) cancelAnimationFrame(requestRef.current);
             if (gl && positionBuffer) {
                 gl.deleteBuffer(positionBuffer);
             }
         };
-    }, [spawnParticle]);
+    }, [spawnParticle, startEffect]);
 
     return <canvas ref={canvasRef} />;
 };
