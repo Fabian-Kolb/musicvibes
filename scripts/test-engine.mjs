@@ -66,11 +66,25 @@ check('Drop detection off: no drop events', () => {
   assert.deepEqual(run('techno', 75, { opts: { dropDetection: false } }).drops, []);
 });
 
+check('Real music has far less energy in the highs than in the bass: all three bands still move', () => {
+  // Typical linear band means of real music: bass -26 dB, mids -48 dB, highs -68 dB.
+  const E = createEngine();
+  const o = { ...DEFAULT_ENGINE_OPTIONS };
+  const lo = [1, 1, 1], hi = [0, 0, 0];
+  for (let t = 0; t < 60; t += DT) {
+    const kick = Math.exp(-((t * 2) % 1) * 9), hat = Math.exp(-((t * 4) % 1) * 20), voc = 0.5 + 0.5 * Math.sin(t * 1.3);
+    updateEngine(E, { bass: 0.012 + 0.05 * kick, mid: 0.001 + 0.006 * voc, high: 0.00005 + 0.0005 * hat }, DT, o);
+    if (t > 15) [E.bass, E.mid, E.high].forEach((v, i) => { lo[i] = Math.min(lo[i], v); hi[i] = Math.max(hi[i], v); });
+  }
+  ['bass', 'mid', 'high'].forEach((n, i) => assert.ok(hi[i] - lo[i] > 0.3 && hi[i] > 0.7, `${n}: ${lo[i].toFixed(2)} to ${hi[i].toFixed(2)}`));
+  assert.ok(E.hatRate > 3, `hats ${E.hatRate}/s`);
+});
+
 check('Silence is silence: hiss below the floor after a pause stays at zero', () => {
   const E = createEngine();
   const o = { ...DEFAULT_ENGINE_OPTIONS, floor: 0.001 };
   for (let t = 0; t < 10; t += DT) updateEngine(E, { bass: 0.3, mid: 0.2, high: 0.1 }, DT, o);
-  for (let t = 0; t < 60; t += DT) updateEngine(E, { bass: 0.0004 * (1 + rand()), mid: 0.0003, high: 0.0002 }, DT, o);
+  for (let t = 0; t < 60; t += DT) updateEngine(E, { bass: 0.0002 * (1 + rand()), mid: 0.0001, high: 0.0001 }, DT, o);
   assert.ok(E.silent, 'silent flag');
   assert.ok(E.bass < 0.01 && E.mid < 0.01, `bass ${E.bass}, mid ${E.mid}`);
   assert.equal(E.dropHold > 0, false);

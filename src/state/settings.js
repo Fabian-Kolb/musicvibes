@@ -60,6 +60,7 @@ export const DEFAULTS = {
   autoGain: true,
   agcTime: 25,
   gain: 1,
+  dynamicRange: 18,
   kickSensitivity: 1,
   noiseFloor: -55,
   latency: 0,

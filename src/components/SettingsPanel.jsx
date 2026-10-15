@@ -105,6 +105,7 @@ const SECTIONS = [
       { key: 'autoGain', type: 'toggle', label: 'Auto-Pegel', hint: 'Gleicht leise und laute Songs aus, unabhängig von der Windows-Lautstärke' },
       { key: 'agcTime', label: 'Anpassungszeit', min: 5, max: 60, step: 1, format: sec, show: is('autoGain', true) },
       { key: 'gain', label: 'Verstärkung', min: 0.5, max: 3, format: times },
+      { key: 'dynamicRange', label: 'Dynamik-Bereich', min: 8, max: 36, step: 1, format: (v) => `${v} dB`, hint: 'Wie viele Dezibel Schwankung das Bild voll ausschlagen lassen. Kleiner: stärkere Reaktion auf leise Höhen und Mitten. Größer: ruhigeres Bild' },
       { key: 'kickSensitivity', label: 'Kick-Empfindlichkeit', min: 0.5, max: 2, format: pct },
       { key: 'noiseFloor', label: 'Stille-Schwelle', min: -80, max: -35, step: 1, format: (v) => `${v} dB`, hint: 'Alles darunter zählt als Stille' },
       { key: 'latency', label: 'Bild verzögern', min: 0, max: 500, step: 10, format: (v) => `${v} ms`, hint: 'Für Bluetooth-Lautsprecher: Das Bild wartet auf den Ton' },

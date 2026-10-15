@@ -85,6 +85,7 @@ export default function Visualizer() {
       opts.autoGain = S.autoGain;
       opts.agcTime = S.agcTime;
       opts.gain = S.gain;
+      opts.range = S.dynamicRange;
       opts.floor = Math.pow(10, S.noiseFloor / 20);
       opts.smoothing = S.smoothing;
       opts.kickSensitivity = S.kickSensitivity;

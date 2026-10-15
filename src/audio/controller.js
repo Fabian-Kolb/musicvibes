@@ -54,7 +54,7 @@ export async function startSource(source, { userGesture = false } = {}) {
     if (ctx.state === 'suspended') await ctx.resume().catch(() => {});
     if (!analyser) {
       analyser = ctx.createAnalyser();
-      analyser.fftSize = 2048;
+      analyser.fftSize = 4096; // ~12 Hz per bin at 48 kHz: tight enough to separate kick from voice
       analyser.smoothingTimeConstant = 0.25;
       // -Infinity dB = silence; a zero-filled array would read as full scale before the first block.
       freq = new Float32Array(analyser.frequencyBinCount).fill(-Infinity);
@@ -117,5 +117,6 @@ export function read(dt, demoGenre) {
   }
   if (!analyser || !stream || ctx.state !== 'running') return SILENT;
   analyser.getFloatFrequencyData(freq);
-  return { bass: bandAvg(35, 160), mid: bandAvg(300, 2500), high: bandAvg(4000, 12000), section: '' };
+  // Bass stops at 110 Hz: kick and sub-bass, not the body of a voice (100 to 250 Hz is left out on purpose).
+  return { bass: bandAvg(30, 110), mid: bandAvg(250, 2500), high: bandAvg(4000, 12000), section: '' };
 }

@@ -18,7 +18,8 @@ export const DEFAULT_ENGINE_OPTIONS = {
   autoGain: true, // false: the level reference only rises, never falls back
   agcTime: 25, // seconds for the auto gain to forget a loud passage
   gain: 1, // multiplier after normalisation
-  floor: 0.0018, // raw level below which the input counts as silence (-55 dB)
+  floor: 0.0018, // summed band level below which the input counts as silence (-55 dB)
+  range: 18, // dB of swing around the average that fill the 0..1 scale of the picture
   smoothing: 1, // >1 slower, <1 snappier band followers
   kickSensitivity: 1, // >1 detects softer kicks
   dropSensitivity: 1, // >1 detects smaller drops
@@ -34,6 +35,7 @@ export function createEngine() {
   return {
     now: 0,
     peak: [0.001, 0.001, 0.001],
+    avgDb: [null, null, null],
     bass: 0, mid: 0, high: 0,
     kick: onsetDetector(), hat: onsetDetector(),
     kickRate: 0, hatRate: 0,
@@ -48,6 +50,7 @@ export function createEngine() {
 // Call when the audio source changes: the gain starts over and the drop logic warms up again.
 export function resetEngine(E, peak = 0.05) {
   E.peak = [peak, peak, peak];
+  E.avgDb = [null, null, null];
   E.warm = 0;
   E.dropHold = 0;
   E.cooldown = 0;
@@ -60,23 +63,36 @@ export function updateEngine(E, raw, dt, options = DEFAULT_ENGINE_OPTIONS) {
   E.dropEvent = false;
 
   const vals = [raw.bass, raw.mid, raw.high];
-  const level = Math.max(vals[0], vals[1], vals[2]);
+  // Silence is judged on the whole signal. Real music is far quieter per frequency in
+  // the mids and highs than in the bass, so a per-band floor would cut them off.
+  const level = vals[0] + vals[1] + vals[2];
   E.silentFor = level < o.floor ? E.silentFor + dt : 0;
   E.silent = E.silentFor > 1.5;
 
-  // Normalise each band against its own peak. The peak never sinks below a few times
-  // the noise floor, so hiss during a pause is not blown up to full scale.
+  // Two views of each band:
+  // - `norm`: level against the band's own recent peak (0..1, linear). Drives the logic
+  //   (kicks, drops, drive), where a loud return after a breakdown has to stand out.
+  // - `vis`: level in decibels against the band's own running average. An average moment
+  //   sits at the middle of the scale, `range` dB of swing fill it. Bass, mids and highs
+  //   all move over the full range for the picture, however different their raw levels.
+  // While the input is silent both references are left alone.
+  const quiet = level < o.floor;
   const decay = o.autoGain ? Math.exp(-dt / o.agcTime) : 1;
-  const norm = vals.map((v, i) => {
-    const gated = v < o.floor ? 0 : v;
-    E.peak[i] = Math.max(gated, E.peak[i] * decay, o.floor * 6, 1e-6);
-    return clamp((gated / E.peak[i]) * o.gain);
+  const norm = [0, 0, 0];
+  const vis = [0, 0, 0];
+  vals.forEach((v, i) => {
+    if (quiet) return;
+    E.peak[i] = Math.max(v, E.peak[i] * decay, 1e-7);
+    norm[i] = clamp((v / E.peak[i]) * o.gain);
+    const db = 20 * Math.log10(Math.max(v, 1e-9));
+    E.avgDb[i] = E.avgDb[i] === null ? db : ema(E.avgDb[i], db, dt, 8);
+    vis[i] = clamp(0.5 + ((db - E.avgDb[i]) / o.range) * o.gain);
   });
   const [b, m, h] = norm;
   const sm = o.smoothing;
-  E.bass = follow(E.bass, b, dt, 0.03 * sm, 0.22 * sm);
-  E.mid = follow(E.mid, m, dt, 0.06 * sm, 0.4 * sm);
-  E.high = follow(E.high, h, dt, 0.03 * sm, 0.25 * sm);
+  E.bass = follow(E.bass, vis[0], dt, 0.03 * sm, 0.22 * sm);
+  E.mid = follow(E.mid, vis[1], dt, 0.06 * sm, 0.4 * sm);
+  E.high = follow(E.high, vis[2], dt, 0.03 * sm, 0.25 * sm);
 
   // Onsets: a band jumping above its own very recent level.
   const ks = 1 / Math.max(0.2, o.kickSensitivity);
