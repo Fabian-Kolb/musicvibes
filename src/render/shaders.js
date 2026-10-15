@@ -48,6 +48,16 @@ const mat2 R = mat2(1.6, 1.2, -1.2, 1.6);
 float fbm3(vec2 p) { float s = 0.0, a = 0.5; for (int i = 0; i < 3; i++) { s += a * snoise(p); p = R * p; a *= 0.5; } return s; }
 float fbm4(vec2 p) { float s = 0.0, a = 0.5; for (int i = 0; i < 4; i++) { s += a * snoise(p); p = R * p; a *= 0.5; } return s; }
 
+// Highs: a fine twinkle inside the colour, like light glinting on water. Strength
+// follows the hi-hats and cymbals (uShimmer); it never flashes the whole screen.
+// The points sit in the colour and drift with it, each one blinking on its own.
+vec3 sparkle(vec3 col, vec2 p, float t) {
+  float n = snoise(p * 26.0);
+  float blink = 0.5 + 0.5 * sin(t * 9.0 + n * 40.0);
+  float s = smoothstep(0.55, 0.92, n) * blink * uShimmer;
+  return col * (1.0 + 0.8 * s) + vec3(0.07 * s);
+}
+
 vec2 warp(vec2 p, float t) {
   vec2 q = vec2(fbm3(p + vec2(0.0, t * 0.55)), fbm3(p + vec2(5.2, 1.3) - vec2(t * 0.45, 0.0)));
   vec2 r = vec2(fbm3(p + uWarp * q + vec2(1.7, 9.2) + t * 0.32), fbm3(p + uWarp * q + vec2(8.3, 2.8) - t * 0.38));
@@ -155,7 +165,7 @@ vec3 minimalStyle(vec2 uv, float t) {
   // Harder music draws firmer edges; calm music stays hazy.
   float k = clamp((uSharp - 3.2) / 3.0, 0.0, 1.0);
   float cover = smoothstep(mix(0.12, 0.25, k), mix(0.9, 0.6, k), ws);
-  return mix(uBg, col, cover);
+  return mix(uBg, sparkle(col, q, t), cover);
 }
 
 // Style "Flächen": the whole screen is one slowly flowing colour gradient.
@@ -165,7 +175,7 @@ vec3 flatStyle(vec2 uv, float t) {
   vec3 col = field(w, t * 0.7);
   // Broad dark valleys keep contrast; flat, not lit.
   float v = smoothstep(-0.7, 0.7, snoise(w * 0.55 + vec2(t * 0.08, -t * 0.05)));
-  return col * mix(0.22, 1.0, v);
+  return sparkle(col * mix(0.22, 1.0, v), w, t);
 }
 
 void main() {

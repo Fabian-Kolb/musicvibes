@@ -49,21 +49,35 @@ Im Browser muss Chrome bei jedem Start fragen: „Gesamter Bildschirm“ wählen
 
 Der Strobe ist standardmäßig aus und blitzt dann nur während eines Drops, höchstens dreimal pro Sekunde. Die Grenze lässt sich abschalten.
 
+## So wird der Ton ausgewertet
+
+Pro Bild liest die App das Spektrum des Desktop-Tons (FFT mit 4096 Punkten, etwa 12 Hz pro Stufe) und bildet drei Bänder, wie man sie hört:
+
+| Band | Frequenzen | Was darin liegt | Wirkung im Bild |
+| --- | --- | --- | --- |
+| Bass | 35 bis 100 Hz | Kick, Bassline | Farben schwellen an, Puls im Hintergrund |
+| Mitten | 500 Hz bis 4 kHz | Gesang, Melodie, Snare | Formen verbiegen sich, Farben fließen schneller |
+| Höhen | 5 bis 16 kHz | Hi-Hats, Becken, S-Laute | Feines Funkeln in den Farben |
+
+Gemessen wird die Leistung im Band. Jedes Band hat seine eigene automatische Aussteuerung, deshalb hebt der einsetzende Bass die Mitten und Höhen nicht mit an. Ein Band, das im Song kaum vorkommt (Bass in einem A-cappella-Intro), bleibt unten, statt hochverstärkt zu werden. Schläge (Kick, Snare, Hi-Hat) erkennt die App am spektralen Fluss: wie stark die Frequenzen eines Bandes gegenüber dem Moment davor ansteigen. Ein Drop zählt nur, wenn Bass und Kick nach einem Breakdown von ein paar Sekunden zurückkommen.
+
 ## Tests
 
 ```bash
-npm test     # Audio-Engine und Bild-Logik mit simulierten Songs
+npm test     # Audio-Engine, Bild-Logik und Frequenzanalyse
 npm run lint
 ```
+
+Die Analyse-Tests spielen synthetische Stimmen, Bass, Kick, Snare und Hi-Hats durch denselben Analyser wie der Browser und prüfen zum Beispiel, dass eine Stimme die Mitten bewegt und nicht den Bass, und dass der einsetzende Bass die Mitten nicht mitzieht.
 
 ## Aufbau
 
 | Ordner | Inhalt |
 | --- | --- |
 | `electron/` | Desktop-App: Fenster und Loopback-Aufnahme des Desktop-Tons |
-| `src/audio/` | Tonquelle starten (Desktop, Gerät, Testsignal) und Frequenzbänder messen |
+| `src/audio/` | Tonquelle starten (Desktop, Gerät, Testsignal) und Frequenzbänder messen (`analysis.js`) |
 | `src/engine/` | Audio-Engine (Auto-Pegel, Kicks, Drive, Drops) und das Testsignal |
 | `src/render/` | WebGL-Shader, Renderer und die Abbildung Musik → Bild |
 | `src/state/` | Einstellungen, Szenen, Paletten (ein Objekt, später auch fürs Handy) |
 | `src/components/` | Oberfläche: Visualizer, Leiste, Einstellungen |
-| `scripts/` | Tests |
+| `scripts/` | Tests; `scripts/lib/` ahmt den Analyser des Browsers nach und erzeugt Testklänge |

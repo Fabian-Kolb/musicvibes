@@ -2,7 +2,8 @@ import { useEffect, useRef } from 'react';
 import { createEngine, resetEngine, updateEngine, moodOf } from '../engine/audioEngine';
 import { createRenderer } from '../render/renderer';
 import { computeFrame, createVisualState } from '../render/frame';
-import { read, sourceVersion, currentSource } from '../audio/controller';
+import { read, sourceVersion } from '../audio/controller';
+import { SILENT_FRAME } from '../audio/analysis';
 import { settingsStore, liveStore } from '../state/store';
 import { PALETTES } from '../state/palettes';
 import { STYLES } from '../state/settings';
@@ -46,7 +47,7 @@ export default function Visualizer() {
 
     const E = createEngine();
     const V = createVisualState();
-    const opts = { weights: [1, 1, 1] };
+    const opts = {};
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const delayed = [];
     let seenVersion = -1;
@@ -66,7 +67,7 @@ export default function Visualizer() {
 
       if (sourceVersion() !== seenVersion) {
         seenVersion = sourceVersion();
-        resetEngine(E, currentSource() === 'demo' ? 0.05 : 0.002);
+        resetEngine(E);
       }
 
       // Bluetooth speakers play late; holding the analysis back keeps picture and sound together.
@@ -75,7 +76,7 @@ export default function Visualizer() {
         delayed.push({ t: now, raw });
         raw = null;
         while (delayed.length && delayed[0].t <= now - S.latency) raw = delayed.shift().raw;
-        if (!raw) raw = { bass: 0, mid: 0, high: 0, section };
+        if (!raw) raw = { ...SILENT_FRAME, section };
       } else if (delayed.length) {
         delayed.length = 0;
       }
@@ -85,8 +86,8 @@ export default function Visualizer() {
       opts.autoGain = S.autoGain;
       opts.agcTime = S.agcTime;
       opts.gain = S.gain;
-      opts.range = S.dynamicRange;
-      opts.floor = Math.pow(10, S.noiseFloor / 20);
+      opts.range = S.bandRange;
+      opts.floor = S.silenceLevel;
       opts.smoothing = S.smoothing;
       opts.kickSensitivity = S.kickSensitivity;
       opts.dropSensitivity = S.dropSensitivity;

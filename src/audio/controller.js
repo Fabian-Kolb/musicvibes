@@ -1,17 +1,17 @@
 import { audioStore } from '../state/store';
 import { captureDesktop, captureDevice, isDesktopApp, listInputDevices } from './capture';
 import { simulate, genreById } from '../engine/simulator';
+import { analyse, createAnalysis, fromLinear, SILENT_FRAME } from './analysis';
 
 // Owns the current audio source and the analyser. The render loop calls read() once
 // per frame; nothing here touches React.
 
-let ctx = null, analyser = null, srcNode = null, stream = null, freq = null;
+let ctx = null, analyser = null, srcNode = null, stream = null, freq = null, bands = null;
 let current = null;
 let token = 0;
 let simT = 0;
 let version = 0;
 let restartTimer = 0;
-const SILENT = { bass: 0, mid: 0, high: 0, section: '' };
 
 export const sourceVersion = () => version;
 export const currentSource = () => current;
@@ -58,6 +58,7 @@ export async function startSource(source, { userGesture = false } = {}) {
       analyser.smoothingTimeConstant = 0.25;
       // -Infinity dB = silence; a zero-filled array would read as full scale before the first block.
       freq = new Float32Array(analyser.frequencyBinCount).fill(-Infinity);
+      bands = createAnalysis(ctx.sampleRate, analyser.fftSize);
     }
     stream = res.stream;
     srcNode = ctx.createMediaStreamSource(stream);
@@ -100,23 +101,13 @@ if (typeof navigator !== 'undefined' && navigator.mediaDevices?.addEventListener
   });
 }
 
-function bandAvg(lo, hi) {
-  const hz = ctx.sampleRate / analyser.fftSize;
-  const a = Math.max(1, Math.floor(lo / hz));
-  const z = Math.min(freq.length - 1, Math.ceil(hi / hz));
-  let s = 0;
-  for (let i = a; i <= z; i++) s += Math.pow(10, freq[i] / 20);
-  return s / (z - a + 1);
-}
-
-// Raw linear band levels for this frame.
+// Band levels and onsets for this frame (see analysis.js).
 export function read(dt, demoGenre) {
   if (current === 'demo') {
     simT += dt;
-    return simulate(genreById(demoGenre), simT);
+    return fromLinear(simulate(genreById(demoGenre), simT));
   }
-  if (!analyser || !stream || ctx.state !== 'running') return SILENT;
+  if (!analyser || !stream || ctx.state !== 'running') return SILENT_FRAME;
   analyser.getFloatFrequencyData(freq);
-  // Bass stops at 110 Hz: kick and sub-bass, not the body of a voice (100 to 250 Hz is left out on purpose).
-  return { bass: bandAvg(30, 110), mid: bandAvg(250, 2500), high: bandAvg(4000, 12000), section: '' };
+  return analyse(bands, freq, dt);
 }

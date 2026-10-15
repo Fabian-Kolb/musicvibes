@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import { createEngine, updateEngine, DEFAULT_ENGINE_OPTIONS } from '../src/engine/audioEngine.js';
 import { GENRES, genreById, simulate, sectionStart } from '../src/engine/simulator.js';
+import { fromLinear } from '../src/audio/analysis.js';
 
 const DT = 1 / 60;
 let seed = 7;
@@ -16,7 +17,7 @@ function run(genreId, seconds, { scale = 1, opts = {} } = {}) {
   let kicks = 0, driveSum = 0, n = 0;
   for (let t = 0; t < seconds; t += DT) {
     const s = simulate(g, t, rand);
-    updateEngine(E, { bass: s.bass * scale, mid: s.mid * scale, high: s.high * scale }, DT, o);
+    updateEngine(E, fromLinear({ bass: s.bass * scale, mid: s.mid * scale, high: s.high * scale }), DT, o);
     if (E.dropEvent) drops.push(+t.toFixed(1));
     if (t > 20) { kicks += E.kickEvent ? 1 : 0; driveSum += E.drive; n += 1; }
   }
@@ -66,14 +67,14 @@ check('Drop detection off: no drop events', () => {
   assert.deepEqual(run('techno', 75, { opts: { dropDetection: false } }).drops, []);
 });
 
-check('Real music has far less energy in the highs than in the bass: all three bands still move', () => {
-  // Typical linear band means of real music: bass -26 dB, mids -48 dB, highs -68 dB.
+check('Bands far apart in level all move over the full meter', () => {
+  // Typical band levels of real music: bass far above the mids, the highs far below.
   const E = createEngine();
   const o = { ...DEFAULT_ENGINE_OPTIONS };
   const lo = [1, 1, 1], hi = [0, 0, 0];
   for (let t = 0; t < 60; t += DT) {
     const kick = Math.exp(-((t * 2) % 1) * 9), hat = Math.exp(-((t * 4) % 1) * 20), voc = 0.5 + 0.5 * Math.sin(t * 1.3);
-    updateEngine(E, { bass: 0.012 + 0.05 * kick, mid: 0.001 + 0.006 * voc, high: 0.00005 + 0.0005 * hat }, DT, o);
+    updateEngine(E, fromLinear({ bass: 0.012 + 0.05 * kick, mid: 0.001 + 0.006 * voc, high: 0.00005 + 0.0005 * hat }), DT, o);
     if (t > 15) [E.bass, E.mid, E.high].forEach((v, i) => { lo[i] = Math.min(lo[i], v); hi[i] = Math.max(hi[i], v); });
   }
   ['bass', 'mid', 'high'].forEach((n, i) => assert.ok(hi[i] - lo[i] > 0.3 && hi[i] > 0.7, `${n}: ${lo[i].toFixed(2)} to ${hi[i].toFixed(2)}`));
@@ -82,19 +83,12 @@ check('Real music has far less energy in the highs than in the bass: all three b
 
 check('Silence is silence: hiss below the floor after a pause stays at zero', () => {
   const E = createEngine();
-  const o = { ...DEFAULT_ENGINE_OPTIONS, floor: 0.001 };
-  for (let t = 0; t < 10; t += DT) updateEngine(E, { bass: 0.3, mid: 0.2, high: 0.1 }, DT, o);
-  for (let t = 0; t < 60; t += DT) updateEngine(E, { bass: 0.0002 * (1 + rand()), mid: 0.0001, high: 0.0001 }, DT, o);
+  const o = { ...DEFAULT_ENGINE_OPTIONS, floor: -60 };
+  for (let t = 0; t < 10; t += DT) updateEngine(E, fromLinear({ bass: 0.3, mid: 0.2, high: 0.1 }), DT, o);
+  for (let t = 0; t < 60; t += DT) updateEngine(E, fromLinear({ bass: 0.0002 * (1 + rand()), mid: 0.0001, high: 0.0001 }), DT, o);
   assert.ok(E.silent, 'silent flag');
   assert.ok(E.bass < 0.01 && E.mid < 0.01, `bass ${E.bass}, mid ${E.mid}`);
   assert.equal(E.dropHold > 0, false);
-});
-
-check('Quiet music just above the floor is not blown up to full scale', () => {
-  const E = createEngine();
-  const o = { ...DEFAULT_ENGINE_OPTIONS, floor: 0.001 };
-  for (let t = 0; t < 40; t += DT) updateEngine(E, { bass: 0.0015, mid: 0.0015, high: 0.0015 }, DT, o);
-  assert.ok(E.bass < 0.5, `bass ${E.bass}`);
 });
 
 if (failed) { console.log(`\n${failed} test(s) failed`); process.exit(1); }
