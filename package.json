@@ -1,30 +1,71 @@
 {
-  "name": "musicvibes",
+  "name": "vibsync",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "test": "node scripts/test-engine.mjs && node scripts/test-frame.mjs",
+    "app": "vite build && electron .",
+    "dist:win": "vite build && electron-builder --win",
+    "dist:linux": "vite build && electron-builder --linux"
   },
-  "dependencies": {
-    "lucide-react": "^0.563.0",
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0",
-    "react-router-dom": "^7.13.0",
-    "simplex-noise": "^4.0.3"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@eslint/js": "^9.39.1",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
+    "electron": "^44.7.2",
+    "electron-builder": "^26.15.3",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
+    "lucide-react": "^0.563.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
     "vite": "^7.3.1"
+  },
+  "productName": "VibSync",
+  "description": "Musik-Visualizer, der live auf den Ton des Computers reagiert",
+  "author": "Fabian Kolb",
+  "main": "electron/main.cjs",
+  "build": {
+    "appId": "de.fabiankolb.vibsync",
+    "productName": "VibSync",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "build/icon.png",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "VibSync-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "VibSync-${version}-portable.${ext}"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "AudioVideo",
+      "icon": "build/icon.png"
+    }
   }
 }

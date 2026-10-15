@@ -5,9 +5,9 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist', '.agents']),
+  globalIgnores(['dist', 'release', '.agents']),
   {
-    files: ['**/*.{js,jsx}'],
+    files: ['**/*.{js,jsx,mjs}'],
     extends: [
       js.configs.recommended,
       reactHooks.configs.flat.recommended,
@@ -28,5 +28,11 @@ export default defineConfig([
     rules: {
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]', argsIgnorePattern: '^_' }],
     },
+  },
+  {
+    files: ['electron/**/*.cjs'],
+    extends: [js.configs.recommended],
+    languageOptions: { sourceType: 'commonjs', globals: globals.node },
+    rules: { 'no-unused-vars': ['error', { argsIgnorePattern: '^_' }] },
   },
 ])
