@@ -67,7 +67,7 @@ export function simulate(g, t, rand = Math.random) {
   let mid = g.mid * (0.72 + 0.28 * Math.sin(beat * Math.PI / 8) ** 2) + snareE * 0.45 * g.snareAmt;
   let high = g.high * (0.35 + 0.65 * hatE) + snareE * 0.18 * g.snareAmt;
   if (sec[2] === 'break') {
-    bass = g.bass * 0.18;
+    bass = g.bass * 0.05; // the low end is gone, as in real breakdowns
     mid *= 0.85;
     high = g.high * (0.25 + 0.85 * prog) + hatE * 0.1 * prog;
   }

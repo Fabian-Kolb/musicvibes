@@ -58,14 +58,19 @@ export function computeFrame(E, V, S, dt, env = {}) {
 
   if (E.dropEvent && S.dropColorJump) V.hueKick = glassy ? 1.1 : 0.7;
 
-  const flowSpeed = (0.05 + 0.3 * d + (0.3 * E.eFast * r + 0.55 * E.punch * d * r) * S.peakSpeed
+  // Each band has its own job, so bass, voice and hi-hats are told apart on screen:
+  // - Bass (level and kicks): size and zoom of the colours, the pulse of the ground.
+  // - Mids (voice, melody, snare): the shapes bend and the colours flow faster.
+  // - Highs (hi-hats, cymbals): a fine twinkle inside the colours, plus the gloss in Glas.
+  const flowSpeed = (0.05 + 0.3 * d + (0.15 * E.eFast * r + 0.55 * E.punch * d * r) * S.peakSpeed
+    + 0.3 * E.mid * r * mi * S.peakSpeed
     + (dropping && S.dropBoost ? 0.2 : 0)) * S.speed * motion;
   V.flow += flowSpeed * dt;
 
   const zoomBase = (1.05 + 0.75 * d) / S.size;
   const zoomTarget = zoomBase * Math.max(0.3, 1 - 0.3 * E.bass * r * bi) * Math.max(0.3, 1 - 0.12 * E.punch * r * bp);
   V.zoom = ema(V.zoom, zoomTarget, dt, 0.12);
-  V.warp = ema(V.warp, (0.35 + 0.6 * E.mid * r * mi + 0.4 * d) * S.form, dt, 0.4);
+  V.warp = ema(V.warp, (0.35 + 0.6 * E.mid * r * mi + 0.35 * E.snap * r * mi + 0.4 * d) * S.form, dt, E.snap > 0.3 ? 0.08 : 0.4);
   V.sharp = ema(V.sharp, 3.2 + 3.0 * d, dt, 1.5);
   // Minimal: bass makes the colour clouds swell, each kick gives a short push.
   V.size = ema(V.size, (0.17 + 0.09 * E.bass * r * bi + 0.05 * E.punch * r * bp) * S.size, dt, 0.06);
@@ -102,7 +107,7 @@ export function computeFrame(E, V, S, dt, env = {}) {
   P.warp = V.warp;
   P.sharp = V.sharp;
   P.glass = S.glass * (0.75 + 0.5 * E.high * hi);
-  P.shimmer = E.high * (0.4 + 0.6 * d) * r * hi;
+  P.shimmer = clamp((0.6 * E.high * E.high + 0.6 * E.sparkle) * (0.5 + 0.5 * d) * r * hi, 0, 1.5);
   P.depth = 0.3 - 0.2 * d;
   P.hue = V.hue + V.hueCycle + (S.hueShift * Math.PI) / 180;
   P.ripAge = E.now - E.kickT;

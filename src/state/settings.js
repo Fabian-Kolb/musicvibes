@@ -60,9 +60,9 @@ export const DEFAULTS = {
   autoGain: true,
   agcTime: 25,
   gain: 1,
-  dynamicRange: 18,
+  bandRange: 24,
   kickSensitivity: 1,
-  noiseFloor: -55,
+  silenceLevel: -70,
   latency: 0,
 
   // Anzeige

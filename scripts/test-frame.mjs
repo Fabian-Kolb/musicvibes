@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import { createEngine, updateEngine, DEFAULT_ENGINE_OPTIONS } from '../src/engine/audioEngine.js';
 import { genreById, simulate } from '../src/engine/simulator.js';
+import { fromLinear } from '../src/audio/analysis.js';
 import { computeFrame, createVisualState } from '../src/render/frame.js';
 import { DEFAULTS, SCENE_KEYS, BUILTIN_SCENES, sceneValues, sanitize } from '../src/state/settings.js';
 
@@ -24,7 +25,7 @@ function play(settings, genreId = 'techno', seconds = 75) {
   let maxRip = 0, minZoomFb = 9, maxZoomFb = 0;
   for (let t = 0; t < seconds; t += DT) {
     const s = simulate(g, t, () => 0.5);
-    updateEngine(E, s, DT, { ...DEFAULT_ENGINE_OPTIONS, dropDetection: S.dropDetection });
+    updateEngine(E, fromLinear(s), DT, { ...DEFAULT_ENGINE_OPTIONS, dropDetection: S.dropDetection });
     const before = V.lastFlash;
     const P = computeFrame(E, V, S, DT);
     if (V.lastFlash !== before) flashes.push({ t: E.now, inDrop: E.dropHold > 0 });
