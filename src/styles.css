@@ -171,6 +171,14 @@ input[type='text'] { flex: 1; min-width: 0; padding: 8px 10px; border-radius: 10
 .user-scenes li { display: flex; gap: 6px; }
 .scene-load { flex: 1; justify-content: flex-start; border-radius: 10px; }
 .scene-save { display: flex; gap: 6px; }
+.lights { gap: 10px; grid-template-columns: minmax(0, 1fr); min-width: 0; }
+.lights > .text-btn { justify-self: start; display: inline-flex; align-items: center; gap: 6px; }
+.warn-text { color: var(--warn); }
+.light-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.light { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 10px; border-radius: 12px; border: 1px solid var(--line); background: rgba(255,255,255,0.04); }
+.light-head { display: flex; align-items: center; gap: 10px; }
+.light-head label { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.light-head input[type='checkbox'] { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
 .level { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-dim); }
 .keys { margin: 0; padding: 0 18px 14px; display: grid; gap: 6px; font-size: 13px; }
 .keys div { display: grid; grid-template-columns: 48px 1fr; }

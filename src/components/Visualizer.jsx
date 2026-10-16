@@ -4,11 +4,15 @@ import { createRenderer } from '../render/renderer';
 import { computeFrame, createVisualState } from '../render/frame';
 import { read, sourceVersion } from '../audio/controller';
 import { SILENT_FRAME } from '../audio/analysis';
-import { settingsStore, liveStore } from '../state/store';
+import { settingsStore, liveStore, lightStore } from '../state/store';
+import { createLightState, computeLights } from '../lights/lightSync';
+import { desktopBridge } from '../audio/capture';
 import { PALETTES } from '../state/palettes';
 import { STYLES } from '../state/settings';
 
 const QUALITY_SCALE = { high: 1, medium: 0.6, low: 0.4 };
+const lightBridge = desktopBridge?.lights;
+const LIGHT_SEND_MS = 40; // 25 updates per second; the app passes on at most 20 per light
 
 function nextOf(list, cur, shuffle) {
   const i = list.indexOf(cur);
@@ -57,6 +61,27 @@ export default function Visualizer() {
     let lastSwitch = last / 1000;
     let hudT = 0, frames = 0, fpsT = 0, fps = 0;
     let section = '';
+    const L = createLightState();
+    let lightKey = '', lightSent = 0;
+
+    // Govee lights: start or stop the stream when the chosen lights change, then send
+    // the colours of the current picture.
+    function lights(S, P, dt, now) {
+      if (!lightBridge) return;
+      const devs = S.lights ? S.lightDevices.filter((d) => d.on) : [];
+      const key = devs.map((d) => `${d.ip}/${d.mode}`).join(',');
+      if (key !== lightKey) {
+        lightKey = key;
+        if (devs.length) {
+          lightBridge.begin(devs).then((r) => lightStore.set({ error: r && r.error ? r.error : '' }), () => {});
+        } else {
+          lightBridge.end().catch(() => {});
+        }
+      }
+      if (!devs.length) return;
+      const frames = computeLights(L, E, V, P, S, dt, devs);
+      if (now - lightSent >= LIGHT_SEND_MS) { lightSent = now; lightBridge.frame(frames); }
+    }
 
     function frame(now) {
       raf = requestAnimationFrame(frame);
@@ -102,6 +127,7 @@ export default function Visualizer() {
       }
 
       const P = computeFrame(E, V, settingsStore.get(), dt, { reduceMotion });
+      lights(settingsStore.get(), P, dt, now);
 
       // Resolution: fixed by the setting, or adjusted to hold the frame rate.
       frameEma = frameEma * 0.95 + dt * 0.05;
@@ -139,6 +165,7 @@ export default function Visualizer() {
     return () => {
       cancelAnimationFrame(raf);
       renderer.destroy();
+      if (lightKey) lightBridge.end().catch(() => {});
     };
   }, []);
 

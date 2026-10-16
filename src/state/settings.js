@@ -65,6 +65,15 @@ export const DEFAULTS = {
   silenceLevel: -70,
   latency: 0,
 
+  // Licht (Govee, nur Desktop-App)
+  lights: false,
+  lightDevices: [], // [{ ip, sku, on, mode: 'segments' | 'single', segments }]
+  lightBrightness: 0.8,
+  lightPulse: 1,
+  lightSpread: 0.6,
+  lightSparkle: true,
+  lightStrobe: false,
+
   // Anzeige
   quality: 'auto', // auto | high | medium | low
   fpsLimit: 0, // 0 = so schnell wie der Bildschirm
@@ -105,6 +114,13 @@ export function sceneValues(values) {
   return out;
 }
 
+// A light from the list: anything malformed is dropped.
+export function cleanLight(d) {
+  if (!d || typeof d !== 'object' || typeof d.ip !== 'string' || !/^\d{1,3}(\.\d{1,3}){3}$/.test(d.ip)) return null;
+  const segments = Number.isFinite(d.segments) ? Math.min(100, Math.max(1, Math.round(d.segments))) : 20;
+  return { ip: d.ip, sku: typeof d.sku === 'string' ? d.sku.slice(0, 20) : '', on: d.on !== false, mode: d.mode === 'single' ? 'single' : 'segments', segments };
+}
+
 // Merge stored values over the defaults, dropping anything with the wrong type
 // (an old or hand-edited entry must not break the app).
 export function sanitize(stored) {
@@ -114,7 +130,9 @@ export function sanitize(stored) {
     const v = stored[k];
     const d = DEFAULTS[k];
     if (v === undefined || v === null) return;
-    if (Array.isArray(d)) {
+    if (k === 'lightDevices') {
+      if (Array.isArray(v)) out[k] = v.map(cleanLight).filter(Boolean).slice(0, 16);
+    } else if (Array.isArray(d)) {
       if (Array.isArray(v) && v.length === d.length && v.every((c) => typeof c === 'string')) out[k] = v;
     } else if (typeof v === typeof d && (typeof v !== 'number' || Number.isFinite(v))) {
       out[k] = v;
