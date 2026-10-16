@@ -68,6 +68,9 @@ export const audioStore = createStore({
   devices: [],
 });
 
+// Govee lights: last scan and connection problems, written by the panel and the render loop.
+export const lightStore = createStore({ scanning: false, scanned: false, error: '', testing: '' });
+
 export const useStore = (store) => useSyncExternalStore(store.subscribe, store.get);
 export const useSettings = () => useStore(settingsStore);
 export const setSetting = (key, value) => settingsStore.set({ [key]: value });

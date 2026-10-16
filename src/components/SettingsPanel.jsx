@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { X, RotateCcw, Trash2 } from 'lucide-react';
+import { X, RotateCcw, Trash2, Search, Plus } from 'lucide-react';
 import { Range, Toggle, Segmented, Select, ColorField, Meter } from './controls';
-import { DEFAULTS, STYLES, BUILTIN_SCENES, SCENE_KEYS, sceneValues } from '../state/settings';
+import { DEFAULTS, STYLES, BUILTIN_SCENES, SCENE_KEYS, sceneValues, cleanLight } from '../state/settings';
 import { PALETTES, CUSTOM_PALETTE } from '../state/palettes';
 import { GENRES } from '../engine/simulator';
-import { settingsStore, scenesStore, audioStore, liveStore, useSettings, useStore, setSetting, resetSettings } from '../state/store';
+import { settingsStore, scenesStore, audioStore, liveStore, lightStore, useSettings, useStore, setSetting, resetSettings } from '../state/store';
 import { desktopBridge, isDesktopApp } from '../audio/capture';
 import { refreshDevices } from '../audio/controller';
 import { strobeMaxRate } from '../render/frame';
@@ -112,6 +112,21 @@ const SECTIONS = [
     ],
   },
   {
+    id: 'lights', title: 'Licht', desktop: true,
+    controls: [
+      { type: 'lights' },
+      { key: 'lightBrightness', label: 'Helligkeit der Lichter', min: 0.1, max: 1, format: pct, show: is('lights', true) },
+      { key: 'lightPulse', label: 'Bass-Puls', min: 0, max: 1.5, format: pct, show: is('lights', true),
+        hint: 'Wie stark die Lichter bei Bass und Kicks heller werden. Höchstens 3 Pulse pro Sekunde' },
+      { key: 'lightSpread', label: 'Farbverlauf', min: 0, max: 1, format: pct, show: is('lights', true),
+        hint: 'Links: der ganze Streifen in einer Farbe. Rechts: mehrere Palettenfarben nebeneinander' },
+      { key: 'lightSparkle', type: 'toggle', label: 'Funkeln bei Hi-Hats', show: is('lights', true),
+        hint: 'Einzelne Segmente leuchten kurz heller auf' },
+      { key: 'lightStrobe', type: 'toggle', label: 'Strobe auch auf den Lichtern', warn: true, show: is('lights', true),
+        hint: 'Nur wenn der Strobe unter „Drops & Strobe“ an ist. Auf den Lichtern immer höchstens 3 Blitze pro Sekunde.' },
+    ],
+  },
+  {
     id: 'display', title: 'Anzeige',
     controls: [
       { key: 'quality', type: 'select', label: 'Qualität', options: [
@@ -204,6 +219,85 @@ function DisplayControl({ s }) {
   );
 }
 
+const lightName = (d) => `${d.sku || 'Govee-Licht'} · ${d.ip}`;
+const updateLight = (s, ip, patch) => setSetting('lightDevices', s.lightDevices.map((d) => (d.ip === ip ? { ...d, ...patch } : d)));
+
+function LightRow({ d, s }) {
+  const st = useStore(lightStore);
+  const test = async () => {
+    lightStore.set({ testing: d.ip, error: '' });
+    const r = await desktopBridge.lights.test(d).catch((err) => ({ error: String(err) }));
+    lightStore.set({ testing: '', error: r && r.error ? r.error
+      : r && !r.answered ? `${lightName(d)} hat nicht geantwortet. Ist „LAN Control“ in der Govee Home App an?` : '' });
+  };
+  return (
+    <li className="light">
+      <div className="light-head">
+        <label><input type="checkbox" checked={d.on} onChange={(e) => updateLight(s, d.ip, { on: e.target.checked })} /> {lightName(d)}</label>
+        <button type="button" className="text-btn" disabled={!!st.testing} onClick={test}>{st.testing === d.ip ? 'Test läuft …' : 'Test'}</button>
+        <button type="button" className="icon-btn" aria-label={`${lightName(d)} entfernen`}
+          onClick={() => setSetting('lightDevices', s.lightDevices.filter((x) => x.ip !== d.ip))}><Trash2 size={15} /></button>
+      </div>
+      <Segmented compact label={`Ansteuerung ${lightName(d)}`} value={d.mode} onChange={(v) => updateLight(s, d.ip, { mode: v })}
+        options={[{ id: 'segments', name: 'Segmente' }, { id: 'single', name: 'Eine Farbe' }]} />
+      {d.mode === 'segments' && (
+        <Range label="Anzahl Segmente" value={d.segments} min={1} max={60} step={1} format={String}
+          onChange={(v) => updateLight(s, d.ip, { segments: v })} />
+      )}
+    </li>
+  );
+}
+
+function LightsControl({ s }) {
+  const st = useStore(lightStore);
+  const [manual, setManual] = useState('');
+  const add = (found) => {
+    const list = [...s.lightDevices];
+    found.forEach((f) => {
+      const d = cleanLight({ ...f, on: true });
+      const i = list.findIndex((x) => x.ip === f.ip);
+      if (!d) return;
+      if (i < 0) list.push(d);
+      else list[i] = { ...list[i], sku: list[i].sku || d.sku };
+    });
+    setSetting('lightDevices', list.slice(0, 16));
+  };
+  const scan = async () => {
+    lightStore.set({ scanning: true, error: '' });
+    const r = await desktopBridge.lights.scan().catch((err) => ({ error: String(err) }));
+    if (r && r.list) add(r.list);
+    lightStore.set({ scanning: false, scanned: true, error: r && r.error ? r.error
+      : r && r.list && !r.list.length ? 'Keine Lichter gefunden. Ist „LAN Control“ an und der PC im selben WLAN? Sonst die IP-Adresse unten eintragen.' : '' });
+  };
+  const addManual = (e) => {
+    e.preventDefault();
+    const ip = manual.trim();
+    if (!cleanLight({ ip })) { lightStore.set({ error: 'Das ist keine IP-Adresse (Beispiel: 192.168.178.45).' }); return; }
+    add([{ ip, sku: '' }]);
+    setManual('');
+  };
+  return (
+    <div className="field lights">
+      <Toggle label="Lichter steuern" value={s.lights} onChange={(v) => setSetting('lights', v)}
+        hint="Govee-Lichter im WLAN leuchten mit der Musik und den Farben des Bildes. Beim Beenden bekommen sie ihre alte Farbe zurück." />
+      <button type="button" className="text-btn" disabled={st.scanning} onClick={scan}>
+        <Search size={13} /> {st.scanning ? 'Suche läuft …' : 'Lichter suchen'}
+      </button>
+      {st.error && <p className="hint warn-text" role="alert">{st.error}</p>}
+      {s.lightDevices.length > 0 && (
+        <ul className="light-list">{s.lightDevices.map((d) => <LightRow key={d.ip} d={d} s={s} />)}</ul>
+      )}
+      <form className="scene-save" onSubmit={addManual}>
+        <input type="text" inputMode="decimal" value={manual} maxLength={15} placeholder="IP-Adresse von Hand" aria-label="IP-Adresse eines Lichts"
+          onChange={(e) => setManual(e.target.value)} />
+        <button type="submit" disabled={!manual.trim()}><Plus size={14} /> Hinzufügen</button>
+      </form>
+      <p className="hint">Einmalig nötig: in der Govee Home App beim Gerät unter Einstellungen „LAN Control“ einschalten. Fragt Windows beim ersten Suchen nach dem Netzwerkzugriff, „Private Netzwerke“ zulassen.</p>
+      <p className="hint">Segmente: jedes Stück des Streifens bekommt eine eigene Farbe. Leuchtet beim Test nur ein Teil oder gar nichts, nimm „Eine Farbe“.</p>
+    </div>
+  );
+}
+
 function Control({ c, s }) {
   if (c.desktop && !isDesktopApp) return null;
   if (c.show && !c.show(s)) return null;
@@ -211,6 +305,7 @@ function Control({ c, s }) {
   if (c.type === 'source') return <SourceControl s={s} />;
   if (c.type === 'level') return <LevelControl />;
   if (c.type === 'display') return <DisplayControl s={s} />;
+  if (c.type === 'lights') return <LightsControl s={s} />;
   const label = typeof c.label === 'function' ? c.label(s) : c.label;
   const common = { label, value: s[c.key], onChange: (v) => setSetting(c.key, v), hint: c.hint };
   switch (c.type) {
@@ -288,7 +383,7 @@ export default function SettingsPanel({ open, onClose }) {
           <summary>Szenen</summary>
           <Scenes />
         </details>
-        {SECTIONS.map((sec) => (
+        {SECTIONS.filter((sec) => !sec.desktop || isDesktopApp).map((sec) => (
           <details key={sec.id} open={sec.open}>
             <summary>{sec.title}</summary>
             <div className="section-body">

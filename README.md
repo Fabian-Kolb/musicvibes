@@ -61,10 +61,23 @@ Pro Bild liest die App das Spektrum des Desktop-Tons (FFT mit 4096 Punkten, etwa
 
 Gemessen wird die Leistung im Band. Jedes Band hat seine eigene automatische Aussteuerung, deshalb hebt der einsetzende Bass die Mitten und Höhen nicht mit an. Ein Band, das im Song kaum vorkommt (Bass in einem A-cappella-Intro), bleibt unten, statt hochverstärkt zu werden. Schläge (Kick, Snare, Hi-Hat) erkennt die App am spektralen Fluss: wie stark die Frequenzen eines Bandes gegenüber dem Moment davor ansteigen. Ein Drop zählt nur, wenn Bass und Kick nach einem Breakdown von ein paar Sekunden zurückkommen.
 
+## Licht (Govee)
+
+In der Desktop-App können Govee-Lichter im WLAN mitleuchten (Einstellungen → Licht). Die App spricht die Lichter direkt im Heimnetz an (Govee LAN API, UDP), ohne Cloud und ohne API-Schlüssel.
+
+1. In der Govee Home App beim Gerät unter Einstellungen „LAN Control“ einschalten (einmalig).
+2. In VibSync „Lichter suchen“ drücken, oder die IP-Adresse des Lichts von Hand eintragen. Fragt Windows nach dem Netzwerkzugriff, „Private Netzwerke“ zulassen.
+3. Mit „Test“ prüfen: Läuft ein Regenbogen über den ganzen Streifen, passt „Segmente“. Sonst „Eine Farbe“ wählen.
+4. „Lichter steuern“ einschalten.
+
+Die Lichter zeigen die Palette des Bildes (mit Farbwanderung und Farbsprung beim Drop), werden mit Bass und Kicks heller (höchstens 3 Pulse pro Sekunde) und funkeln bei Hi-Hats in einzelnen Segmenten. Strobe auf den Lichtern ist aus, bis man es einschaltet, und bleibt auf höchstens 3 Blitze pro Sekunde begrenzt. Beim Ausschalten oder Beenden bekommen die Lichter ihren vorigen Zustand zurück (an/aus, Farbe oder Weißton, Helligkeit). Gespeicherte Govee-Szenen kann die LAN-Schnittstelle nicht auslesen; ein Licht, das vorher eine Szene zeigte, kommt mit seiner letzten Farbe zurück.
+
+Segmentfarben laufen über den Befehl `razer` (dasselbe Protokoll wie Razer-Chroma-Sync, nachgebaut wie in OpenRGB). Läuft schon ein anderes Programm, das Govee-Lichter steuert (OpenRGB, Govee Desktop), ist Port 4002 belegt; dann dieses Programm schließen.
+
 ## Tests
 
 ```bash
-npm test     # Audio-Engine, Bild-Logik und Frequenzanalyse
+npm test     # Audio-Engine, Bild-Logik, Frequenzanalyse und Govee-Lichter
 npm run lint
 ```
 
@@ -74,7 +87,8 @@ Die Analyse-Tests spielen synthetische Stimmen, Bass, Kick, Snare und Hi-Hats du
 
 | Ordner | Inhalt |
 | --- | --- |
-| `electron/` | Desktop-App: Fenster und Loopback-Aufnahme des Desktop-Tons |
+| `electron/` | Desktop-App: Fenster, Loopback-Aufnahme des Desktop-Tons, Govee-Lichter (`govee.cjs`) |
+| `src/lights/` | Farben und Helligkeit der Lichter aus Musik und Bild |
 | `src/audio/` | Tonquelle starten (Desktop, Gerät, Testsignal) und Frequenzbänder messen (`analysis.js`) |
 | `src/engine/` | Audio-Engine (Auto-Pegel, Kicks, Drive, Drops) und das Testsignal |
 | `src/render/` | WebGL-Shader, Renderer und die Abbildung Musik → Bild |

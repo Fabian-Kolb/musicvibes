@@ -6,6 +6,7 @@
 
 const { app, BrowserWindow, session, desktopCapturer, ipcMain, screen, shell, Menu } = require('electron');
 const path = require('node:path');
+const { createGovee } = require('./govee.cjs');
 
 // Chromium switches system-audio loopback on per platform: PulseAudio/PipeWire on Linux,
 // ScreenCaptureKit on macOS. Windows (WASAPI loopback) needs no flag.
@@ -19,6 +20,7 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 let win = null;
+const govee = createGovee();
 
 function displayFor(id) {
   const all = screen.getAllDisplays();
@@ -71,7 +73,9 @@ function createWindow() {
   win.webContents.on('will-navigate', (e, url) => {
     if (!url.startsWith('file://') && !(devUrl && url.startsWith(devUrl))) e.preventDefault();
   });
-  win.on('closed', () => { win = null; });
+  win.on('closed', () => { win = null; govee.end().catch(() => {}); });
+  // A reload starts the page over: the lights get their own state back until it asks again.
+  win.webContents.on('did-start-navigation', (e) => { if (e.isMainFrame && !e.isSameDocument) govee.end().catch(() => {}); });
 }
 
 app.on('second-instance', () => {
@@ -111,7 +115,29 @@ app.whenReady().then(() => {
     }));
   });
 
+  // Govee lights in the local network.
+  const devices = (list) => (Array.isArray(list) ? list : []).slice(0, 16)
+    .map((d) => ({ ip: String(d && d.ip), mode: d && d.mode === 'single' ? 'single' : 'segments', segments: Number(d && d.segments) || 20 }));
+  const why = (err) => (err && err.code === 'EADDRINUSE'
+    ? 'Port 4002 ist belegt. Läuft OpenRGB, Govee Desktop oder ein anderes Licht-Programm? Schließe es und versuche es noch einmal.'
+    : String((err && err.message) || err));
+  ipcMain.handle('vibsync:lights-scan', () => govee.scan(2000).then((list) => ({ list }), (err) => ({ error: why(err) })));
+  ipcMain.handle('vibsync:lights-test', (_e, d) => govee.test(devices([d])[0]).catch((err) => ({ error: why(err) })));
+  ipcMain.handle('vibsync:lights-begin', (_e, list) => govee.begin(devices(list)).then((ips) => ({ ips }), (err) => ({ error: why(err) })));
+  ipcMain.handle('vibsync:lights-end', () => govee.end());
+  ipcMain.on('vibsync:lights-frame', (_e, frames) => govee.frame(frames));
+
   createWindow();
+});
+
+// Give the lights their state back before the app goes.
+let quitting = false;
+app.on('before-quit', (e) => {
+  if (quitting || !govee.busy()) return;
+  e.preventDefault();
+  quitting = true;
+  const settled = async () => { await govee.end(); while (govee.busy()) await new Promise((r) => setTimeout(r, 50)); };
+  Promise.race([settled(), new Promise((r) => setTimeout(r, 1500))]).finally(() => app.quit());
 });
 
 app.on('window-all-closed', () => app.quit());
