@@ -45,17 +45,18 @@ check('Strobe off (the default): no flash at all, even through a drop', () => {
   assert.equal(r.flashes.length, 0);
 });
 
-check('Strobe "Nur bei Drops": flashes only inside the drop, at most 3 per second', () => {
-  const r = play({ strobe: true, strobeMode: 'drop', strobeRate: 10 });
+check('Strobe "Nur bei Drops" with the safety limit: flashes only inside the drop, at most 3 per second', () => {
+  const r = play({ strobe: true, strobeMode: 'drop', strobeRate: 10, strobeLimit: true });
   assert.ok(r.flashes.length > 5, `${r.flashes.length} flashes`);
   assert.ok(r.flashes.every((f) => f.inDrop));
   assert.ok(r.maxPerSecond <= 3, `${r.maxPerSecond}/s`);
 });
 
-check('Safety limit holds 3 Hz even at a fixed rate of 10 Hz; switched off, 10 Hz is allowed', () => {
-  const safe = play({ strobe: true, strobeMode: 'always', strobeSync: 'rate', strobeRate: 10 }, 'techno', 20);
+check('Safety limit holds 3 Hz even at a fixed rate of 10 Hz; switched off (the default), 10 Hz is allowed', () => {
+  const safe = play({ strobe: true, strobeMode: 'always', strobeSync: 'rate', strobeRate: 10, strobeLimit: true }, 'techno', 20);
   assert.ok(safe.maxPerSecond <= 3, `safe ${safe.maxPerSecond}/s`);
-  const unsafe = play({ strobe: true, strobeMode: 'always', strobeSync: 'rate', strobeRate: 10, strobeSafe: false }, 'techno', 20);
+  assert.equal(DEFAULTS.strobeLimit, false);
+  const unsafe = play({ strobe: true, strobeMode: 'always', strobeSync: 'rate', strobeRate: 10 }, 'techno', 20);
   assert.ok(unsafe.maxPerSecond >= 8 && unsafe.maxPerSecond <= 10, `unsafe ${unsafe.maxPerSecond}/s`);
 });
 
@@ -93,7 +94,7 @@ check('Palette change fades over the transition time instead of jumping', () => 
 });
 
 check('Scenes never touch strobe, audio or brightness', () => {
-  for (const k of ['strobe', 'strobeSafe', 'strobeRate', 'source', 'gain', 'brightness', 'latency']) {
+  for (const k of ['strobe', 'strobeLimit', 'strobeRate', 'source', 'gain', 'brightness', 'latency']) {
     assert.ok(!SCENE_KEYS.includes(k), k);
   }
   for (const sc of BUILTIN_SCENES) {

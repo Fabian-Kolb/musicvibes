@@ -11,7 +11,7 @@ contextBridge.exposeInMainWorld('vibsync', {
   lights: {
     scan: () => ipcRenderer.invoke('vibsync:lights-scan'),
     test: (device) => ipcRenderer.invoke('vibsync:lights-test', device),
-    begin: (devices) => ipcRenderer.invoke('vibsync:lights-begin', devices),
+    begin: (devices, opts) => ipcRenderer.invoke('vibsync:lights-begin', devices, opts),
     end: () => ipcRenderer.invoke('vibsync:lights-end'),
     frame: (frames) => ipcRenderer.send('vibsync:lights-frame', frames),
   },

@@ -123,7 +123,7 @@ app.whenReady().then(() => {
     : String((err && err.message) || err));
   ipcMain.handle('vibsync:lights-scan', () => govee.scan(2000).then((list) => ({ list }), (err) => ({ error: why(err) })));
   ipcMain.handle('vibsync:lights-test', (_e, d) => govee.test(devices([d])[0]).catch((err) => ({ error: why(err) })));
-  ipcMain.handle('vibsync:lights-begin', (_e, list) => govee.begin(devices(list)).then((ips) => ({ ips }), (err) => ({ error: why(err) })));
+  ipcMain.handle('vibsync:lights-begin', (_e, list, opts) => govee.begin(devices(list), { rate: Number(opts && opts.rate) }).then((ips) => ({ ips }), (err) => ({ error: why(err) })));
   ipcMain.handle('vibsync:lights-end', () => govee.end());
   ipcMain.on('vibsync:lights-frame', (_e, frames) => govee.frame(frames));
 

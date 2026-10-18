@@ -82,6 +82,25 @@ function Notice() {
   return null;
 }
 
+// Shown at every start until switched off: the app can flash fast on screen and on
+// connected lights, and there is no fixed flash limit unless the user sets one.
+function StartWarning() {
+  const [open, setOpen] = useState(() => settingsStore.get().startWarning);
+  const [hide, setHide] = useState(false);
+  if (!open) return null;
+  const close = () => { if (hide) setSetting('startWarning', false); setOpen(false); };
+  return (
+    <div className="warning-backdrop">
+      <div className="notice warning" role="alertdialog" aria-modal="true" aria-labelledby="warn-title" aria-describedby="warn-text">
+        <h1 id="warn-title">Achtung: Lichtblitze</h1>
+        <p id="warn-text">VibSync kann schnelle Lichtblitze und flackerndes Licht erzeugen, auf dem Bildschirm und auf angeschlossenen Lichtern. Bei Menschen mit lichtempfindlicher Epilepsie können solche Blitze Anfälle auslösen. Ist jemand im Raum betroffen, lass den Strobe aus oder schalte unter Einstellungen → Drops &amp; Strobe die Sicherheitsgrenze ein.</p>
+        <label className="check"><input type="checkbox" checked={hide} onChange={(e) => setHide(e.target.checked)} /> Beim Start nicht mehr anzeigen</label>
+        <button type="button" className="primary" autoFocus onClick={close}>Verstanden</button>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const s = useSettings();
   const live = useStore(liveStore);
@@ -156,6 +175,7 @@ export default function App() {
       <Hud s={s} />
       {s.showFps && <div className="fps">{live.fps} FPS</div>}
       <Notice />
+      <StartWarning />
       <div className="dock ui" {...uiHandlers}>
         <SourceStatus />
         <span className="sep" aria-hidden="true" />
