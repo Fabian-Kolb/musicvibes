@@ -27,3 +27,6 @@ skills
 docs
 # Desktop builds
 release
+
+# Update-Pakete, die Claude in den Ordner legt
+update-*.tar.gz
