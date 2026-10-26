@@ -12,7 +12,6 @@ import { STYLES } from '../state/settings';
 
 const QUALITY_SCALE = { high: 1, medium: 0.6, low: 0.4 };
 const lightBridge = desktopBridge?.lights;
-const LIGHT_SEND_MS = 40; // 25 updates per second; the app passes on at most 20 per light
 
 function nextOf(list, cur, shuffle) {
   const i = list.indexOf(cur);
@@ -69,18 +68,19 @@ export default function Visualizer() {
     function lights(S, P, dt, now) {
       if (!lightBridge) return;
       const devs = S.lights ? S.lightDevices.filter((d) => d.on) : [];
-      const key = devs.map((d) => `${d.ip}/${d.mode}`).join(',');
+      const key = devs.map((d) => `${d.ip}/${d.mode}`).join(',') + (devs.length ? `@${S.lightRate}` : '');
       if (key !== lightKey) {
         lightKey = key;
         if (devs.length) {
-          lightBridge.begin(devs).then((r) => lightStore.set({ error: r && r.error ? r.error : '' }), () => {});
+          lightBridge.begin(devs, { rate: S.lightRate }).then((r) => lightStore.set({ error: r && r.error ? r.error : '' }), () => {});
         } else {
           lightBridge.end().catch(() => {});
         }
       }
       if (!devs.length) return;
       const frames = computeLights(L, E, V, P, S, dt, devs);
-      if (now - lightSent >= LIGHT_SEND_MS) { lightSent = now; lightBridge.frame(frames); }
+      // Slightly faster than the app sends on, so every packet carries fresh colours.
+      if (now - lightSent >= 900 / S.lightRate) { lightSent = now; lightBridge.frame(frames); }
     }
 
     function frame(now) {

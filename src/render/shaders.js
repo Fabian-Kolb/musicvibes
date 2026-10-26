@@ -15,6 +15,10 @@ uniform vec3 uCol[5];
 // 0 = Glas, 1 = Minimal, 2 = Flächen.
 uniform float uStyle, uSize, uCount;
 uniform vec3 uBg;
+// Glints (Minimal, Flächen): x/z = id of the latest and the previous hi-hat, y/w = their
+// age in seconds. uGlintAmt = strength per hit, uTwinkle = background twinkle (highs).
+uniform vec4 uGlint;
+uniform float uGlintAmt, uTwinkle;
 // Symmetry: 0 off, 1 mirror, 2 four-way, 3 kaleidoscope with uSymN segments.
 uniform float uSym, uSymN, uSymRot;
 // Feedback (MilkDrop technique): the previous frame, pushed outward and turned
@@ -48,14 +52,50 @@ const mat2 R = mat2(1.6, 1.2, -1.2, 1.6);
 float fbm3(vec2 p) { float s = 0.0, a = 0.5; for (int i = 0; i < 3; i++) { s += a * snoise(p); p = R * p; a *= 0.5; } return s; }
 float fbm4(vec2 p) { float s = 0.0, a = 0.5; for (int i = 0; i < 4; i++) { s += a * snoise(p); p = R * p; a *= 0.5; } return s; }
 
-// Highs: a fine twinkle inside the colour, like light glinting on water. Strength
-// follows the hi-hats and cymbals (uShimmer); it never flashes the whole screen.
-// The points sit in the colour and drift with it, each one blinking on its own.
-vec3 sparkle(vec3 col, vec2 p, float t) {
-  float n = snoise(p * 26.0);
-  float blink = 0.5 + 0.5 * sin(t * 9.0 + n * 40.0);
-  float s = smoothstep(0.55, 0.92, n) * blink * uShimmer;
-  return col * (1.0 + 0.8 * s) + vec3(0.07 * s);
+// Set by Minimal and Flächen, added after the trails.
+float glint = 0.0;
+
+float hash12(vec2 p) {
+  vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.x + p3.y) * p3.z);
+}
+
+// One layer of glints: one possible point per grid cell, each with its own place,
+// colour share and timing. Every hi-hat lights a fresh handful of points that flare
+// and fade; the previous hit's points fade out underneath, so fast hats overlap.
+float glints(vec2 p, float t) {
+  vec2 id = floor(p);
+  float g = 0.0;
+  for (int j = -1; j <= 1; j++) {
+    for (int i = -1; i <= 1; i++) {
+      vec2 c = id + vec2(float(i), float(j));
+      float h = hash12(c);
+      float h2 = hash12(c + 19.7);
+      float hitA = step(0.9, fract(h * 13.7 + uGlint.x * 0.618034)) * exp(-uGlint.y * 5.0);
+      float hitB = step(0.9, fract(h * 13.7 + uGlint.z * 0.618034)) * exp(-uGlint.w * 5.0);
+      float hit = max(hitA, hitB) * uGlintAmt * (0.6 + 0.4 * h2);
+      // A few points also twinkle on their own while the highs are up.
+      float tw = pow(max(0.0, sin(t * (1.5 + 2.5 * h2) + h * 50.0)), 16.0) * step(0.85, h2) * uTwinkle;
+      float a = max(hit, 0.6 * tw);
+      if (a < 0.003) continue;
+      vec2 d = p - (c + 0.15 + 0.7 * vec2(h, h2));
+      float r2 = dot(d, d);
+      // Bright core, soft halo, faint four-point star.
+      g += a * (exp(-r2 * 60.0) + 0.35 * exp(-r2 * 9.0)
+        + 0.12 * (exp(-abs(d.x) * 30.0 - abs(d.y) * 4.0) + exp(-abs(d.y) * 30.0 - abs(d.x) * 4.0)));
+    }
+  }
+  return g;
+}
+
+// Highs in Minimal and Flächen: glints of light on the colour, like sun on water.
+// Measured in plain screen space (not the warped one, which would stretch them into
+// streaks) and added after the trails in main(), so they stay crisp points.
+float glintAmount(vec2 p, float t) {
+  if (uGlintAmt + uTwinkle < 0.005) return 0.0;
+  vec2 q = p + vec2(t * 0.04, -t * 0.025);
+  return 1.4 * (glints(q * 5.0, t) + 0.5 * glints(q * 9.0 + 3.1, t + 7.0));
 }
 
 vec2 warp(vec2 p, float t) {
@@ -165,7 +205,8 @@ vec3 minimalStyle(vec2 uv, float t) {
   // Harder music draws firmer edges; calm music stays hazy.
   float k = clamp((uSharp - 3.2) / 3.0, 0.0, 1.0);
   float cover = smoothstep(mix(0.12, 0.25, k), mix(0.9, 0.6, k), ws);
-  return mix(uBg, sparkle(col, q, t), cover);
+  glint = glintAmount(uv, t) * cover;
+  return mix(uBg, col, cover);
 }
 
 // Style "Flächen": the whole screen is one slowly flowing colour gradient.
@@ -175,7 +216,8 @@ vec3 flatStyle(vec2 uv, float t) {
   vec3 col = field(w, t * 0.7);
   // Broad dark valleys keep contrast; flat, not lit.
   float v = smoothstep(-0.7, 0.7, snoise(w * 0.55 + vec2(t * 0.08, -t * 0.05)));
-  return sparkle(col * mix(0.22, 1.0, v), w, t);
+  glint = glintAmount(uv, t) * mix(0.4, 1.0, v);
+  return col * mix(0.22, 1.0, v);
 }
 
 void main() {
@@ -211,6 +253,8 @@ void main() {
   c.x /= uRes.x / uRes.y;
   vec3 prev = texture(uPrev, c + 0.5).rgb;
   col = mix(col, prev, uTrail);
+  // Glints take the colour they sit on, brightened toward white.
+  col += mix(col * 1.5 + 0.08, vec3(1.0), 0.6) * glint;
   o = vec4(col, 1.0);
 }`;
 
@@ -236,5 +280,5 @@ void main() {
 
 export const UNIFORMS = ['uRes', 'uT', 'uZoom', 'uWarp', 'uSharp', 'uGlass', 'uShimmer', 'uDepth', 'uHue',
   'uRipAge', 'uRipAmp', 'uSat', 'uCol', 'uStyle', 'uSize', 'uCount', 'uBg', 'uSym', 'uSymN', 'uSymRot',
-  'uPrev', 'uTrail', 'uFbZoom', 'uFbRot'];
+  'uPrev', 'uTrail', 'uFbZoom', 'uFbRot', 'uGlint', 'uGlintAmt', 'uTwinkle'];
 export const PRESENT_UNIFORMS = ['uImg', 'uRes', 'uBright', 'uFlash', 'uVignette', 'uFlashCol'];

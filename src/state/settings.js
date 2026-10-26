@@ -42,7 +42,7 @@ export const DEFAULTS = {
   strobeMode: 'drop', // drop | always
   strobeSync: 'kick', // kick | rate
   strobeRate: 3,
-  strobeSafe: true,
+  strobeLimit: false, // true: höchstens 3 Blitze pro Sekunde (Bild und Lichter)
   strobeIntensity: 0.85,
   strobeColor: 'white', // white | palette
   strobeLength: 'short', // short | long
@@ -72,7 +72,12 @@ export const DEFAULTS = {
   lightPulse: 1,
   lightSpread: 0.6,
   lightSparkle: true,
+  lightEffect: 'auto', // auto | flow | wave | meter | chase | sparks
   lightStrobe: false,
+  lightStrobeMode: 'drop', // drop | always
+  lightStrobeStyle: 'segments', // segments | full
+  lightStrobeRate: 12, // Wechsel pro Sekunde
+  lightRate: 30, // Updates pro Sekunde an jedes Licht
 
   // Anzeige
   quality: 'auto', // auto | high | medium | low
@@ -83,6 +88,7 @@ export const DEFAULTS = {
   alwaysOnTop: false,
   fullscreenOnStart: false,
   display: '', // Bildschirm für Vollbild (Desktop-App), leer = aktueller
+  startWarning: true, // Hinweis zu Lichtblitzen beim Start
 };
 
 export const STYLES = [

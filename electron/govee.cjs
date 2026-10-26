@@ -84,7 +84,7 @@ function scanTargets() {
 
 function createGovee(options = {}) {
   const ports = { ...DEFAULT_PORTS, ...options.ports };
-  const rate = options.rate || 20; // packets per second and light while streaming
+  let rate = options.rate || 30; // packets per second and light while streaming
   const gap = options.commandGap ?? 80; // ms between single commands to one light
   const targets = options.scanTargets || scanTargets;
   let sock = null;
@@ -190,8 +190,8 @@ function createGovee(options = {}) {
     lights.forEach((l, ip) => {
       if (l.testUntil > now || !l.latest) return;
       const key = l.latest.join(',');
-      // Single colour: the light fades itself, fewer packets are enough.
-      const minGap = l.mode === 'segments' ? 1000 / rate : 100;
+      // Single colour goes through the normal colour command: at most 20 a second.
+      const minGap = 1000 / (l.mode === 'segments' ? rate : Math.min(20, rate));
       const changed = key !== l.sentKey;
       if (now - l.lastSent < minGap || (!changed && now - l.lastSent < 1000)) return;
       if (l.mode === 'segments') {
@@ -206,10 +206,16 @@ function createGovee(options = {}) {
     });
   }
 
-  // devices: [{ ip, mode: 'segments' | 'single' }]. Lights not in the list are restored.
   // Counts end() calls: a begin() that is overtaken by an end() stops where it is.
   let epoch = 0;
-  async function begin(devices) {
+  // devices: [{ ip, mode: 'segments' | 'single' }]. Lights not in the list are restored.
+  // opts.rate: packets per second and light (5..50).
+  async function begin(devices, opts = {}) {
+    if (Number.isFinite(opts.rate)) {
+      const r = Math.max(5, Math.min(50, Math.round(opts.rate)));
+      if (r !== rate && timer) { clearInterval(timer); timer = null; }
+      rate = r;
+    }
     const my = epoch;
     await open();
     if (my !== epoch) return [];

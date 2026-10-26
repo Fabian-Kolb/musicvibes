@@ -70,7 +70,21 @@ In der Desktop-App können Govee-Lichter im WLAN mitleuchten (Einstellungen → 
 3. Mit „Test“ prüfen: Läuft ein Regenbogen über den ganzen Streifen, passt „Segmente“. Sonst „Eine Farbe“ wählen.
 4. „Lichter steuern“ einschalten.
 
-Die Lichter zeigen die Palette des Bildes (mit Farbwanderung und Farbsprung beim Drop), werden mit Bass und Kicks heller (höchstens 3 Pulse pro Sekunde) und funkeln bei Hi-Hats in einzelnen Segmenten. Strobe auf den Lichtern ist aus, bis man es einschaltet, und bleibt auf höchstens 3 Blitze pro Sekunde begrenzt. Beim Ausschalten oder Beenden bekommen die Lichter ihren vorigen Zustand zurück (an/aus, Farbe oder Weißton, Helligkeit). Gespeicherte Govee-Szenen kann die LAN-Schnittstelle nicht auslesen; ein Licht, das vorher eine Szene zeigte, kommt mit seiner letzten Farbe zurück.
+Die Lichter zeigen die Palette des Bildes (mit Farbwanderung und Farbsprung beim Drop). Bass, Stimme und Drive bestimmen, wie hell sie leuchten; bei einem durchgehenden Beat werden sie zwischen den Kicks dunkler und blitzen auf jedem Kick auf („Reaktion auf die Musik“). Wie die Farben über die Segmente verteilt sind, legt der Effekt fest:
+
+| Effekt | Was passiert |
+| --- | --- |
+| Farbfluss | Die Palette fließt über den Streifen |
+| Wellen auf Kicks | Jeder Kick schickt eine Welle in der nächsten Farbe von der Mitte nach außen |
+| Pegel aus der Mitte | Ein Pegelbalken: Bass und Kicks schieben ihn nach außen |
+| Lauflicht im Takt | Farbblöcke rücken pro Kick weiter, eine Snare dreht die Richtung |
+| Funken | Dunkler Streifen, Kicks lassen ihn aufleuchten, Hi-Hats und Snares zünden einzelne Segmente |
+
+„Automatisch wechseln“ (Standard) wechselt bei Drops und alle 32 Kicks, ruhige Effekte in ruhiger Musik. Der Licht-Strobe schaltet einzelne Segmente (oder den ganzen Streifen) sehr schnell an und aus, nur bei Drops oder durchgehend, bis zu 25 Wechsel pro Sekunde. Er ist aus, bis man ihn einschaltet.
+
+Beim Ausschalten oder Beenden bekommen die Lichter ihren vorigen Zustand zurück (an/aus, Farbe oder Weißton, Helligkeit). Gespeicherte Govee-Szenen kann die LAN-Schnittstelle nicht auslesen; ein Licht, das vorher eine Szene zeigte, kommt mit seiner letzten Farbe zurück.
+
+**Lichtblitze:** Beim Start warnt die App vor Lichtblitzen (abschaltbar). Eine feste Grenze gibt es nicht; unter Drops & Strobe lässt sich eine Sicherheitsgrenze von höchstens 3 Blitzen pro Sekunde für Bild und Lichter einschalten.
 
 Segmentfarben laufen über den Befehl `razer` (dasselbe Protokoll wie Razer-Chroma-Sync, nachgebaut wie in OpenRGB). Läuft schon ein anderes Programm, das Govee-Lichter steuert (OpenRGB, Govee Desktop), ist Port 4002 belegt; dann dieses Programm schließen.
 

@@ -75,11 +75,11 @@ await check('Scan finds the light', async () => {
   } finally { await g.close(); dev.close(); }
 });
 
-await check('Stream: switches to segments, at most 20 updates a second, newest colours, then restores', async () => {
+await check('Stream: switches to segments, at most the set updates per second, newest colours, then restores', async () => {
   const dev = await fakeLight();
   const g = newGovee();
   try {
-    await g.begin([{ ip: '127.0.0.1', mode: 'segments' }]);
+    await g.begin([{ ip: '127.0.0.1', mode: 'segments' }], { rate: 20 });
     await sleep(30);
     assert.ok(dev.razer && dev.state.brightness === 100 && dev.state.onOff === 1, JSON.stringify(dev));
     // The page sends at 100 updates a second for one second.
@@ -143,55 +143,127 @@ await check('Test button: rainbow over the segments, then the old colour is back
 });
 
 // ---- Colours from the music ------------------------------------------------------
-function run(seconds, setup, opts = {}) {
+function lcg(seed = 7) {
+  let x = seed;
+  return () => { x = (x * 1664525 + 1013904223) >>> 0; return x / 4294967296; };
+}
+// Runs the light logic for `seconds` with a 10-segment strip. setup(E, V, t) sets the
+// music for each frame; events not set there stay off.
+function run(seconds, setup, opts = {}, segments = 10) {
   const E = createEngine();
   const V = createVisualState();
   V.colors.set([1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 0, 0, 1, 1]);
   const P = { hue: 0, sat: 1 };
-  const S = { ...DEFAULTS, lights: true, ...opts };
+  const S = { ...DEFAULTS, lights: true, lightEffect: 'flow', ...opts };
   const L = createLightState();
+  const rnd = lcg();
   const dt = 1 / 60;
   const out = [];
   for (let f = 0; f < seconds * 60; f++) {
     E.now += dt;
+    E.silent = false; E.kickEvent = false; E.snareEvent = false; E.hatEvent = false; E.dropEvent = false;
     setup(E, V, f * dt);
-    const frames = computeLights(L, E, V, P, S, dt, [{ ip: '192.168.0.9', mode: 'segments', segments: 10 }]);
-    out.push({ t: E.now, L: { ...L }, colors: frames[0].colors });
+    const frames = computeLights(L, E, V, P, S, dt, [{ ip: '192.168.0.9', mode: 'segments', segments }], rnd);
+    out.push({ t: E.now, effect: L.effect, pulse: L.lastPulse, colors: frames[0].colors });
   }
   return out;
 }
 const lum = (c) => c.reduce((a, x) => a + x[0] + x[1] + x[2], 0) / (c.length * 765);
+const segLum = (x) => (x[0] + x[1] + x[2]) / 765;
+// Kicks every half second (120 BPM).
+const kicks = (E) => { E.bass = 0.8; E.drive = 0.7; E.kickRate = 2; E.kickEvent = Math.round(E.now * 60) % 30 === 0; E.punch = E.kickEvent ? 1 : E.punch; };
 
-await check('Lights show the palette colours at full colour, one per segment', () => {
-  const rows = run(1, (E) => { E.silent = false; E.bass = 0.5; }, { lightSpread: 0 });
-  const c = rows.at(-1).colors;
+await check('Lights show the palette colours at full colour, flowing along the strip', () => {
+  const c = run(1, (E) => { E.bass = 0.5; }, { lightSpread: 0 }).at(-1).colors;
   assert.equal(c.length, 10);
   c.forEach((x) => { assert.ok(x[0] > 0 && x[1] === 0 && x[2] === 0, JSON.stringify(x)); });
-  const spread = run(1, (E) => { E.silent = false; }, { lightSpread: 1 }).at(-1).colors;
+  const spread = run(1, () => {}, { lightSpread: 1 }).at(-1).colors;
   assert.ok(spread[0][0] > 0 && spread[0][1] === 0 && spread[9][1] > 0 && spread[9][1] === spread[9][0], `colours change along the strip: ${JSON.stringify(spread)}`);
 });
 
 await check('Bass makes the lights brighter, silence dims them', () => {
-  const quiet = lum(run(3, (E) => { E.silent = false; E.bass = 0; }).at(-1).colors);
-  const loud = lum(run(3, (E) => { E.silent = false; E.bass = 1; }).at(-1).colors);
+  const quiet = lum(run(3, (E) => { E.bass = 0; }).at(-1).colors);
+  const loud = lum(run(3, (E) => { E.bass = 1; }).at(-1).colors);
   const silent = lum(run(3, (E) => { E.silent = true; }).at(-1).colors);
   assert.ok(loud > quiet * 1.4 && silent < quiet, `quiet ${quiet.toFixed(3)} loud ${loud.toFixed(3)} silent ${silent.toFixed(3)}`);
 });
 
-await check('Kick pulses and light strobe never exceed 3 per second', () => {
-  // Kicks and picture flashes on every sixth frame: 10 per second.
-  const rows = run(4, (E, V) => {
-    E.silent = false;
-    E.kickEvent = Math.round(E.now * 60) % 6 === 0;
-    E.punch = 1;
-    if (E.kickEvent) V.lastFlash = E.now;
-  }, { strobe: true, lightStrobe: true });
-  const pulses = new Set(rows.map((r) => r.L.lastPulse).filter((t) => t > 0)).size;
-  const flashes = new Set(rows.map((r) => r.L.lastFlash).filter((t) => t > 0)).size;
-  assert.ok(pulses <= 12 && pulses >= 10, `${pulses} pulses in 4 s`);
-  assert.ok(flashes <= 12 && flashes >= 10, `${flashes} flashes in 4 s`);
-  const off = run(2, (E, V) => { E.silent = false; V.lastFlash = E.now; }, { strobe: true, lightStrobe: false });
-  assert.ok(off.every((r) => r.L.flash === 0), 'no light strobe unless switched on');
+await check('Each kick is a clear flash of brightness that drops again before the next', () => {
+  const rows = run(4, kicks);
+  const last = rows.slice(-60);
+  const hi = Math.max(...last.map((r) => lum(r.colors)));
+  const lo = Math.min(...last.map((r) => lum(r.colors)));
+  assert.ok(hi > lo * 2, `brightest ${hi.toFixed(3)}, darkest ${lo.toFixed(3)}`);
+  // The peak comes within 60 ms of the kick.
+  const k = rows.findIndex((r, i) => i > 120 && r.pulse === r.t);
+  const peak = rows.slice(k, k + 20).reduce((m, r, i) => (lum(r.colors) > lum(rows[k + m].colors) ? i : m), 0);
+  assert.ok(peak <= 4, `peak ${peak} frames after the kick`);
+});
+
+await check('Every effect gives its own picture; waves run from the middle outward', () => {
+  const pics = {};
+  for (const fx of ['flow', 'wave', 'meter', 'chase', 'sparks']) {
+    const rows = run(3, (E) => { kicks(E); E.hatEvent = Math.round(E.now * 60) % 8 === 0; E.snareEvent = Math.round(E.now * 60) % 60 === 15; }, { lightEffect: fx });
+    rows.forEach((r) => r.colors.forEach((x) => x.forEach((v) => assert.ok(Number.isInteger(v) && v >= 0 && v <= 255))));
+    // Shortly after the last kick, scaled so the brightest segment is 1.
+    const k = rows.findLastIndex((r, i) => i < rows.length - 10 && r.pulse === r.t);
+    const pic = rows[k + 6].colors.map(segLum);
+    const top = Math.max(...pic, 1e-6);
+    pics[fx] = pic.map((v) => v / top);
+  }
+  const differ = (a, b) => a.some((v, i) => Math.abs(v - b[i]) > 0.1);
+  const names = Object.keys(pics);
+  names.forEach((a, i) => names.slice(i + 1).forEach((b) => assert.ok(differ(pics[a], pics[b]), `${a} and ${b} look the same`)));
+  // Wave: a few frames after a kick the middle is lit, a bit later the ends.
+  const rows = run(3, kicks, { lightEffect: 'wave', lightPulse: 0 });
+  const k = rows.findIndex((r, i) => i > 60 && r.pulse === r.t);
+  const midEnd = (r) => [(segLum(r.colors[4]) + segLum(r.colors[5])) / 2, (segLum(r.colors[0]) + segLum(r.colors[9])) / 2];
+  const [m1, e1] = midEnd(rows[k + 2]);
+  const [m2, e2] = midEnd(rows[k + 24]);
+  assert.ok(m1 > e1 && e2 > m2, `just after the kick middle ${m1.toFixed(2)} ends ${e1.toFixed(2)}, later middle ${m2.toFixed(2)} ends ${e2.toFixed(2)}`);
+});
+
+await check('Meter: more bass lights more segments', () => {
+  const lit = (bass) => run(3, (E) => { E.bass = bass; }, { lightEffect: 'meter', lightSparkle: false }).at(-1).colors
+    .filter((x) => segLum(x) > 0.08).length;
+  assert.ok(lit(1) > lit(0.1), `bass 1: ${lit(1)} segments, bass 0.1: ${lit(0.1)}`);
+});
+
+await check('Auto effect: changes after 32 kicks and on a drop, calm effects in calm music', () => {
+  const rows = run(40, kicks, { lightEffect: 'auto' });
+  const changes = rows.filter((r, i) => i && r.effect !== rows[i - 1].effect);
+  assert.ok(changes.length >= 2, `${changes.length} changes in 40 s at 2 kicks/s`);
+  const drop = run(3, (E) => { kicks(E); E.dropEvent = Math.abs(E.now - 2) < 0.009; }, { lightEffect: 'auto' });
+  assert.notEqual(drop.at(-1).effect, drop[0].effect);
+  const calm = run(60, (E) => { E.drive = 0.2; E.kickEvent = Math.round(E.now * 60) % 30 === 0; }, { lightEffect: 'auto' });
+  assert.ok(calm.every((r) => ['flow', 'meter'].includes(r.effect)), [...new Set(calm.map((r) => r.effect))].join(','));
+});
+
+await check('Segment strobe: off unless switched on, then fast random segments on and off', () => {
+  assert.equal(DEFAULTS.lightStrobe, false);
+  const off = run(2, kicks, { strobe: true });
+  assert.ok(off.every((r) => r.colors.some((x) => segLum(x) > 0.02)), 'without the light strobe no frame goes black');
+  const rows = run(2, kicks, { lightStrobe: true, lightStrobeMode: 'always', lightStrobeRate: 15 }, 20);
+  const patterns = rows.map((r) => r.colors.map((x) => (segLum(x) > 0.5 ? 1 : 0)).join(''));
+  const changes = patterns.filter((p, i) => i && p !== patterns[i - 1]).length;
+  assert.ok(changes >= 25 && changes <= 31, `${changes} changes in 2 s at 15 per second`);
+  assert.ok(patterns.slice(10).every((p) => p.includes('1') && p.includes('0')), 'some segments on, others off');
+  rows.forEach((r) => r.colors.forEach((x) => assert.ok(segLum(x) > 0.5 || segLum(x) === 0)));
+  const drop = run(2, kicks, { lightStrobe: true, lightStrobeMode: 'drop' });
+  assert.ok(drop.every((r) => r.colors.some((x) => segLum(x) > 0.02)), '"Nur bei Drops" stays dark outside a drop');
+});
+
+await check('With the safety limit: at most 3 pulses and 3 strobe changes per second', () => {
+  const fast = (E) => { E.bass = 0.8; E.kickEvent = Math.round(E.now * 60) % 6 === 0; E.punch = 1; };
+  const rows = run(4, fast, { strobeLimit: true });
+  const pulses = new Set(rows.map((r) => r.pulse).filter((t) => t > 0)).size;
+  assert.ok(pulses >= 10 && pulses <= 12, `${pulses} pulses in 4 s`);
+  const free = new Set(run(4, fast).map((r) => r.pulse).filter((t) => t > 0)).size;
+  assert.ok(free >= 38, `${free} pulses in 4 s without the limit`);
+  const strobe = run(4, fast, { strobeLimit: true, lightStrobe: true, lightStrobeMode: 'always', lightStrobeRate: 20, lightStrobeStyle: 'full' });
+  const p = strobe.map((r) => (lum(r.colors) > 0.3 ? 1 : 0));
+  const ons = p.filter((v, i) => v && !p[i - 1]).length;
+  assert.ok(ons <= 7, `${ons} flashes in 4 s`);
 });
 
 await check('Stored light list is cleaned up', () => {

@@ -14,19 +14,22 @@ export function createVisualState() {
     flow: 0, zoom: 1.4, warp: 0.7, sharp: 4, size: 0.2,
     hue: 0, huePhase: 0, hueCycle: 0, hueKick: 0,
     flash: 0, lastFlash: -10, flashIdx: 0, symRot: 0,
+    glintId: 0, glintT: -10, glintPrevId: 0, glintPrevT: -10,
     style: null, styleBlend: 0,
     paletteKey: '', target: new Float32Array(15), colors: new Float32Array(15), colorsReady: false,
     P: {
       flow: 0, zoom: 1, warp: 0.5, sharp: 4, glass: 0, shimmer: 0, depth: 0.3, hue: 0, ripAge: 10, ripAmp: 0,
       sat: 1, style: 1, size: 0.2, count: 6, bg: new Float32Array(3), sym: 0, symN: 6, symRot: 0,
       colors: null, trail: 0, fbZoom: 1, fbRot: 0, bright: 1, flash: 0, vignette: 0.35, flashCol: WHITE,
+      glintId: 0, glintAge: 10, glintPrevId: 0, glintPrevAge: 10, glintAmt: 0, twinkle: 0,
     },
   };
 }
 
-// Strobe rate cap: with the safety limit on, never more than 3 flashes per second
-// (the WCAG threshold for photosensitive seizures).
-export const strobeMaxRate = (S) => (S.strobeSafe ? Math.min(3, S.strobeRate) : S.strobeRate);
+// Strobe rate cap: with the safety limit switched on, never more than 3 flashes per
+// second (the WCAG threshold for photosensitive seizures). Off by default; the app
+// warns about flashing light at start instead.
+export const strobeMaxRate = (S) => (S.strobeLimit ? Math.min(3, S.strobeRate) : S.strobeRate);
 
 export function computeFrame(E, V, S, dt, env = {}) {
   const P = V.P;
@@ -108,6 +111,17 @@ export function computeFrame(E, V, S, dt, env = {}) {
   P.sharp = V.sharp;
   P.glass = S.glass * (0.75 + 0.5 * E.high * hi);
   P.shimmer = clamp((0.6 * E.high * E.high + 0.6 * E.sparkle) * (0.5 + 0.5 * d) * r * hi, 0, 1.5);
+  // Glints (Minimal, Flächen): each hi-hat lights a new set of points.
+  if (E.hatEvent) {
+    V.glintPrevId = V.glintId; V.glintPrevT = V.glintT;
+    V.glintId = (V.glintId + 1) % 997; V.glintT = E.now;
+  }
+  P.glintId = V.glintId;
+  P.glintAge = E.now - V.glintT;
+  P.glintPrevId = V.glintPrevId;
+  P.glintPrevAge = E.now - V.glintPrevT;
+  P.glintAmt = clamp((0.7 + 0.5 * E.high) * (0.6 + 0.4 * d) * r * hi, 0, 1.6);
+  P.twinkle = clamp(0.9 * E.high * E.high * r * hi, 0, 1.2);
   P.depth = 0.3 - 0.2 * d;
   P.hue = V.hue + V.hueCycle + (S.hueShift * Math.PI) / 180;
   P.ripAge = E.now - E.kickT;

@@ -120,6 +120,10 @@ button[aria-pressed='true'] { background: var(--accent); color: var(--accent-ink
   background: var(--glass-strong); border: 1px solid var(--line); backdrop-filter: blur(20px);
   display: grid; gap: 12px; justify-items: start;
 }
+.warning-backdrop { position: fixed; inset: 0; z-index: 50; background: rgba(3, 2, 8, 0.55); }
+.notice.warning { border-color: var(--warn); }
+.notice .check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-dim); }
+.notice .check input { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
 .notice h1 { margin: 0; font-family: var(--font-display); font-size: 20px; }
 .notice p { margin: 0; color: var(--ink-dim); line-height: 1.5; }
 

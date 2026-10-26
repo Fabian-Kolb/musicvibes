@@ -101,6 +101,9 @@ export function createRenderer(canvas) {
     gl.uniform1f(U.uSharp, p.sharp);
     gl.uniform1f(U.uGlass, p.glass);
     gl.uniform1f(U.uShimmer, p.shimmer);
+    gl.uniform4f(U.uGlint, p.glintId, p.glintAge, p.glintPrevId, p.glintPrevAge);
+    gl.uniform1f(U.uGlintAmt, p.glintAmt);
+    gl.uniform1f(U.uTwinkle, p.twinkle);
     gl.uniform1f(U.uDepth, p.depth);
     gl.uniform1f(U.uHue, p.hue);
     gl.uniform1f(U.uRipAge, p.ripAge);
