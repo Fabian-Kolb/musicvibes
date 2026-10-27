@@ -5,8 +5,39 @@
 // and without capturing the screen picture.
 
 const { app, BrowserWindow, session, desktopCapturer, ipcMain, screen, shell, Menu } = require('electron');
+const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { createGovee } = require('./govee.cjs');
+
+// Name and icon for the taskbar. On Linux (Wayland especially) the window icon is ignored,
+// and the shell reads the icon from a .desktop file. The AppImage build installs one; a
+// plain `npm run app` does not, so write it once for the dev run.
+app.setName('VibSync');
+app.setDesktopName('vibsync.desktop');
+
+function ensureDesktopEntry() {
+  if (process.platform !== 'linux' || app.isPackaged) return;
+  const dir = path.join(os.homedir(), '.local', 'share', 'applications');
+  const file = path.join(dir, 'vibsync.desktop');
+  if (fs.existsSync(file)) return;
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(file, [
+      '[Desktop Entry]',
+      'Name=VibSync',
+      'Comment=Musik-Visualizer',
+      `Exec=${process.execPath} ${path.join(__dirname, '..')}`,
+      `Icon=${path.join(__dirname, '..', 'build', 'icon.png')}`,
+      'Type=Application',
+      'Categories=AudioVideo;',
+      'StartupWMClass=VibSync',
+      '',
+    ].join('\n'));
+  } catch (err) {
+    console.warn('Desktop-Eintrag konnte nicht angelegt werden:', err.message);
+  }
+}
 
 // Chromium switches system-audio loopback on per platform: PulseAudio/PipeWire on Linux,
 // ScreenCaptureKit on macOS. Windows (WASAPI loopback) needs no flag.
@@ -85,6 +116,11 @@ app.on('second-instance', () => {
 });
 
 app.whenReady().then(() => {
+  ensureDesktopEntry();
+  // Without hardware acceleration the shader runs on the CPU and the frame rate drops.
+  // The log shows which path Chromium took, so a 30-FPS report can be checked.
+  app.getGPUFeatureStatus && console.info('GPU:', JSON.stringify(app.getGPUFeatureStatus()));
+
   const ses = session.defaultSession;
 
   // Only microphone/device access and the loopback capture are allowed.

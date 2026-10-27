@@ -77,21 +77,26 @@ export async function captureDesktop() {
     throw new CaptureError('unsupported', 'Dieser Browser kann den Desktop-Ton nicht aufnehmen. Nimm die Desktop-App oder Chrome bzw. Edge.');
   }
   let stream = null;
+  let loopbackError = '';
   try {
     stream = await loopbackViaDisplayMedia();
   } catch (err) {
     if (!isDesktopApp && err?.name === 'NotAllowedError') {
       throw new CaptureError('denied', 'Freigabe abgebrochen. Wähle im Dialog „Gesamter Bildschirm“ und setze das Häkchen bei „Systemaudio teilen“.');
     }
-    if (!isLinux) throw new CaptureError('failed', `Desktop-Ton ließ sich nicht starten (${err?.message || err}).`);
+    // On Linux the monitor fallback below takes over, but keep the reason for the message.
+    loopbackError = err?.message || String(err);
+    if (!isLinux) throw new CaptureError('failed', `Desktop-Ton ließ sich nicht starten (${loopbackError}).`);
+    console.warn('Loopback fehlgeschlagen, versuche Monitor-Gerät:', loopbackError);
   }
   if (stream) return { stream, label: 'Desktop-Audio' };
   if (isLinux) {
     const mon = await monitorDevice();
     if (mon) return { stream: mon.stream, label: 'Desktop-Audio (Monitor)' };
   }
+  const hint = loopbackError ? ` (Loopback: ${loopbackError})` : '';
   throw new CaptureError('no-audio', isDesktopApp
-    ? 'Kein Desktop-Ton gefunden. Unter Einstellungen → Audio kannst du ein anderes Gerät wählen.'
+    ? `Kein Desktop-Ton gefunden${hint}. Unter Einstellungen → Audio kannst du ein anderes Gerät wählen.`
     : 'Im Dialog wurde kein Ton freigegeben. Wähle „Gesamter Bildschirm“ und setze das Häkchen bei „Systemaudio teilen“.');
 }
 
