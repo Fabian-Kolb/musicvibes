@@ -14,7 +14,7 @@ npm run app          # baut die Oberfläche und startet die Desktop-App
 Die Desktop-App verbindet sich beim Start automatisch mit dem Desktop-Ton:
 
 - **Windows:** WASAPI-Loopback, also genau das, was auf dem Standard-Ausgabegerät läuft. Ein neues Ausgabegerät (Kopfhörer, HDMI) wird automatisch übernommen.
-- **Linux:** PulseAudio/PipeWire-Loopback, ersatzweise das Gerät „Monitor of …“.
+- **Linux:** Die App nimmt das Standard-Ausgabegerät mit `parec` (Paket `pulseaudio-utils`) oder `pw-record` (Paket `pipewire`) auf. Das klappt mit PulseAudio und PipeWire, unter X11 und Wayland, ohne Freigabe-Dialog. Ein neues Ausgabegerät wird automatisch übernommen. Fehlen beide Programme, versucht sie Chromiums Loopback und das Gerät „Monitor of …“.
 
 Andere Quellen (Mikrofon, „Stereomix“, virtuelle Kabel) und ein **Testsignal** mit simulierten Songs gibt es unter Einstellungen → Audio.
 
