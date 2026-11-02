@@ -1,6 +1,7 @@
 // Behaviour tests for the audio engine, driven by the simulated songs.
 // Run: npm test
 import assert from 'node:assert/strict';
+import { check, finish } from './lib/check.mjs';
 import { createEngine, updateEngine, DEFAULT_ENGINE_OPTIONS } from '../src/engine/audioEngine.js';
 import { GENRES, genreById, simulate, sectionStart } from '../src/engine/simulator.js';
 import { fromLinear } from '../src/audio/analysis.js';
@@ -25,10 +26,6 @@ function run(genreId, seconds, { scale = 1, opts = {} } = {}) {
 }
 
 const results = {};
-let failed = 0;
-function check(name, fn) {
-  try { fn(); console.log(`ok   ${name}`); } catch (err) { failed += 1; console.log(`FAIL ${name}\n     ${err.message}`); }
-}
 
 for (const g of GENRES) results[g.id] = run(g.id, 75);
 
@@ -91,5 +88,4 @@ check('Silence is silence: hiss below the floor after a pause stays at zero', ()
   assert.equal(E.dropHold > 0, false);
 });
 
-if (failed) { console.log(`\n${failed} test(s) failed`); process.exit(1); }
-console.log('\nall engine tests passed');
+finish('engine');
