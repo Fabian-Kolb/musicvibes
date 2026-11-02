@@ -9,6 +9,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { createGovee } = require('./govee.cjs');
+const { createSystemAudio } = require('./systemAudio.cjs');
 
 // Name and icon for the taskbar. On Linux (Wayland especially) the window icon is ignored,
 // and the shell reads the icon from a .desktop file. The AppImage build installs one; a
@@ -46,12 +47,18 @@ const existing = app.commandLine.getSwitchValue('enable-features');
 if (existing) app.commandLine.removeSwitch('enable-features');
 app.commandLine.appendSwitch('enable-features', [existing, ...LOOPBACK_FEATURES].filter(Boolean).join(','));
 
+// Many Linux drivers are on Chromium's GPU blocklist. WebGL then runs in software and the
+// picture stalls at around 30 FPS, so use the GPU anyway (Chromium still falls back to
+// software if the GPU process keeps crashing).
+if (process.platform === 'linux') app.commandLine.appendSwitch('ignore-gpu-blocklist');
+
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 }
 
 let win = null;
 const govee = createGovee();
+const systemAudio = createSystemAudio();
 
 function displayFor(id) {
   const all = screen.getAllDisplays();
@@ -104,9 +111,9 @@ function createWindow() {
   win.webContents.on('will-navigate', (e, url) => {
     if (!url.startsWith('file://') && !(devUrl && url.startsWith(devUrl))) e.preventDefault();
   });
-  win.on('closed', () => { win = null; govee.end().catch(() => {}); });
+  win.on('closed', () => { win = null; govee.end().catch(() => {}); systemAudio.stop(); });
   // A reload starts the page over: the lights get their own state back until it asks again.
-  win.webContents.on('did-start-navigation', (e) => { if (e.isMainFrame && !e.isSameDocument) govee.end().catch(() => {}); });
+  win.webContents.on('did-start-navigation', (e) => { if (e.isMainFrame && !e.isSameDocument) { govee.end().catch(() => {}); systemAudio.stop(); } });
 }
 
 app.on('second-instance', () => {
@@ -163,6 +170,11 @@ app.whenReady().then(() => {
   ipcMain.handle('vibsync:lights-end', () => govee.end());
   ipcMain.on('vibsync:lights-frame', (_e, frames) => govee.frame(frames));
 
+  // Linux desktop sound recorded with parec / pw-record (see systemAudio.cjs).
+  ipcMain.handle('vibsync:sysaudio-start', (e, rate) => systemAudio.start(e.sender, Math.min(192000, Math.max(8000, Math.round(Number(rate)) || 48000))));
+  ipcMain.handle('vibsync:sysaudio-stop', () => systemAudio.stop());
+  ipcMain.handle('vibsync:gpu-info', () => app.getGPUFeatureStatus());
+
   createWindow();
 });
 
@@ -176,4 +188,5 @@ app.on('before-quit', (e) => {
   Promise.race([settled(), new Promise((r) => setTimeout(r, 1500))]).finally(() => app.quit());
 });
 
+app.on('will-quit', () => systemAudio.stop());
 app.on('window-all-closed', () => app.quit());

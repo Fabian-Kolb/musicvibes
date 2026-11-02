@@ -1,9 +1,10 @@
 // Getting the computer's own sound (what plays on the speakers) as a MediaStream.
 //
 // Desktop app (Electron): the main process answers getDisplayMedia with loopback audio,
-// so no share dialog appears. Windows uses WASAPI loopback; Linux uses the
-// PulseAudio/PipeWire loopback. If that yields no audio on Linux, the "Monitor of …"
-// input device is the fallback.
+// so no share dialog appears. Windows uses WASAPI loopback. On Linux the main process
+// records the default output with parec / pw-record and streams the samples here
+// (electron/systemAudio.cjs); Chromium's own loopback and the "Monitor of …" input
+// device are the fallbacks.
 // Browser: getDisplayMedia shows Chrome's share dialog; the user picks a screen and
 // ticks "Systemaudio teilen". The video track is dropped right away.
 
@@ -23,6 +24,67 @@ export class CaptureError extends Error {
 function audioOnly(stream) {
   stream.getVideoTracks().forEach((t) => { t.stop(); stream.removeTrack(t); });
   return stream;
+}
+
+// Plays the samples from the main process into the audio graph. Up to ~80 ms are queued;
+// older samples are dropped, so the picture never lags behind the sound.
+export const PCM_WORKLET = `
+class VibsyncPcm extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.q = []; this.head = 0; this.avail = 0;
+    this.port.onmessage = (e) => {
+      this.q.push(e.data); this.avail += e.data.length;
+      const max = sampleRate * 0.08;
+      while (this.avail > max && this.q.length > 1) { this.avail -= this.q[0].length - this.head; this.q.shift(); this.head = 0; }
+    };
+  }
+  process(_inputs, outputs) {
+    const out = outputs[0][0];
+    let i = 0;
+    while (i < out.length && this.q.length) {
+      const a = this.q[0];
+      const n = Math.min(out.length - i, a.length - this.head);
+      out.set(a.subarray(this.head, this.head + n), i);
+      i += n; this.head += n; this.avail -= n;
+      if (this.head >= a.length) { this.q.shift(); this.head = 0; }
+    }
+    return true;
+  }
+}
+registerProcessor('vibsync-pcm', VibsyncPcm);
+`;
+const workletReady = new WeakMap();
+
+async function nativeSystemAudio(ctx) {
+  const sys = desktopBridge.systemAudio;
+  if (!workletReady.has(ctx)) {
+    const url = URL.createObjectURL(new Blob([PCM_WORKLET], { type: 'text/javascript' }));
+    workletReady.set(ctx, ctx.audioWorklet.addModule(url).finally(() => URL.revokeObjectURL(url)));
+  }
+  await workletReady.get(ctx);
+  const res = await sys.start(ctx.sampleRate);
+  if (!res?.ok) throw new Error(res?.error || 'unbekannter Fehler');
+  let node;
+  try {
+    node = new AudioWorkletNode(ctx, 'vibsync-pcm', { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1] });
+  } catch (err) {
+    sys.stop();
+    throw err;
+  }
+  const offData = sys.onData((bytes) => {
+    const samples = new Float32Array(bytes.byteLength / 4);
+    new Uint8Array(samples.buffer).set(bytes);
+    node.port.postMessage(samples, [samples.buffer]);
+  });
+  let onEnded = null;
+  const offEnded = sys.onEnded(() => onEnded?.());
+  return {
+    node,
+    label: `Desktop-Audio (${res.label})`,
+    onEnded: (cb) => { onEnded = cb; },
+    stop: () => { offData(); offEnded(); node.disconnect(); sys.stop(); },
+  };
 }
 
 async function loopbackViaDisplayMedia() {
@@ -72,7 +134,17 @@ async function monitorDevice() {
   return { stream, label: mon.label };
 }
 
-export async function captureDesktop() {
+// Returns { stream, label } or, for the Linux recording, { node, label, onEnded, stop }.
+export async function captureDesktop(ctx) {
+  let nativeError = '';
+  if (desktopBridge?.systemAudio) {
+    try {
+      return await nativeSystemAudio(ctx);
+    } catch (err) {
+      nativeError = err?.message || String(err);
+      console.warn('Aufnahme über parec/pw-record fehlgeschlagen:', nativeError);
+    }
+  }
   if (!navigator.mediaDevices?.getDisplayMedia) {
     throw new CaptureError('unsupported', 'Dieser Browser kann den Desktop-Ton nicht aufnehmen. Nimm die Desktop-App oder Chrome bzw. Edge.');
   }
@@ -94,9 +166,11 @@ export async function captureDesktop() {
     const mon = await monitorDevice();
     if (mon) return { stream: mon.stream, label: 'Desktop-Audio (Monitor)' };
   }
-  const hint = loopbackError ? ` (Loopback: ${loopbackError})` : '';
+  const reasons = [nativeError, loopbackError && `Loopback: ${loopbackError}`].filter(Boolean).join('; ');
+  const hint = reasons ? ` (${reasons})` : '';
+  const linuxHint = isLinux ? ' Unter Linux braucht die App „parec“ (Paket pulseaudio-utils) oder „pw-record“ (Paket pipewire).' : '';
   throw new CaptureError('no-audio', isDesktopApp
-    ? `Kein Desktop-Ton gefunden${hint}. Unter Einstellungen → Audio kannst du ein anderes Gerät wählen.`
+    ? `Kein Desktop-Ton gefunden${hint}.${linuxHint} Unter Einstellungen → Audio kannst du ein anderes Gerät wählen.`
     : 'Im Dialog wurde kein Ton freigegeben. Wähle „Gesamter Bildschirm“ und setze das Häkchen bei „Systemaudio teilen“.');
 }
 
