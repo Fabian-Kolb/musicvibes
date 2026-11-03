@@ -14,7 +14,7 @@ const COMMANDS = ['play-pause', 'next', 'previous'];
 const MAX_COVER = 4 * 1024 * 1024;
 const EMPTY = {
   available: null, reason: '', status: 'none', app: '', player: '',
-  title: '', artist: '', album: '', cover: '', canPlayPause: false, canNext: false, canPrev: false,
+  title: '', artist: '', album: '', cover: '', coverError: '', canPlayPause: false, canNext: false, canPrev: false,
 };
 
 // A readable player name from a Windows app id or an MPRIS name.
@@ -36,6 +36,16 @@ function normStatus(s) {
   return 'stopped';
 }
 
+// Why the cover is missing, in words for the settings panel.
+function coverReason(code) {
+  const c = String(code || '');
+  if (!c) return '';
+  if (c === 'no-thumbnail') return 'Der Player gibt Windows kein Cover.';
+  if (c === 'empty') return 'Windows liefert ein leeres Cover.';
+  if (c === 'too-big') return 'Das Cover ist größer als 4 MB.';
+  return `Cover nicht lesbar: ${c.slice(0, 300)}`;
+}
+
 // One message from nowplaying.ps1 applied to the state. Pure, for the tests.
 function applyWinMessage(state, msg) {
   if (!msg || typeof msg !== 'object') return state;
@@ -49,6 +59,7 @@ function applyWinMessage(state, msg) {
     title: String(msg.title || ''), artist: String(msg.artist || ''), album: String(msg.album || ''),
     canPlayPause: !!msg.canPlayPause, canNext: !!msg.canNext, canPrev: !!msg.canPrev,
   };
+  next.coverError = coverReason(msg.coverError);
   if (typeof msg.cover === 'string') next.cover = /^data:image\/[\w.+-]+;base64,/.test(msg.cover) ? msg.cover : '';
   if (status === 'none') next.cover = '';
   return next;
@@ -176,8 +187,9 @@ function linuxProvider(update, opts) {
         if (coverChanged) {
           coverUrl = p.artUrl;
           const want = p.artUrl;
-          loadCover(want).catch(() => '').then((cover) => {
-            if (!stopped && coverUrl === want && cover) update((s) => ({ ...s, cover }));
+          loadCover(want).then((cover) => ({ cover, coverError: cover ? '' : (want ? 'Cover nicht lesbar.' : 'Der Player gibt kein Cover.') }),
+            (err) => ({ cover: '', coverError: `Cover nicht lesbar: ${err.message}` })).then((r) => {
+            if (!stopped && coverUrl === want) update((s) => ({ ...s, ...r }));
           });
         }
       }

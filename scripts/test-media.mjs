@@ -69,16 +69,33 @@ await check('Cover palette: a small vivid spot beats a large grey area', () => {
   assert.ok(near(hueOf(p[0]), 47), `${p}`);
 });
 
-await check('Cover palette: black and white cover gives silver tones', () => {
-  const p = extractPalette(cover([[255, 255, 255, 0.4], [0, 0, 0, 0.3], [120, 120, 120, 0.3]]));
-  assert.equal(p.length, 5);
-  p.forEach((c) => assert.ok(satOf(c) <= 0.36, `${c} is not silver`));
+await check('Cover palette: black and white cover gets made-up colours, the same for the same song', () => {
+  const bw = cover([[255, 255, 255, 0.4], [0, 0, 0, 0.3], [120, 120, 120, 0.3]]);
+  const a = extractPalette(bw, { seed: 'Song A|Band' });
+  assert.equal(a.length, 5);
+  assert.ok(a.filter((c) => satOf(c) >= 0.5).length >= 3, `too pale: ${a}`);
+  assert.deepEqual(extractPalette(bw, { seed: 'Song A|Band' }), a, 'same song, other colours');
+  assert.notDeepEqual(extractPalette(bw, { seed: 'Song B|Band' }), a, 'every song the same colours');
 });
 
-await check('Cover palette: one hue fills all five places with distinct shades', () => {
+await check('Cover palette: a black cover with a faint tint keeps that tint', () => {
+  const p = extractPalette(cover([[20, 10, 40, 0.9], [0, 0, 0, 0.1]]), { seed: 'x' });
+  assert.ok(near(hueOf(p[0]), 265, 30), `${p}`);
+});
+
+await check('Cover palette: one hue gets neighbours and a complementary accent', () => {
   const p = extractPalette(cover([[0, 180, 120, 1]]));
   assert.equal(new Set(p).size, 5, `${p}`);
-  p.forEach((c) => assert.ok(near(hueOf(c), 160, 40), `${c} strays from green`));
+  assert.ok(near(hueOf(p[0]), 160), `${p}`);
+  assert.ok(p.some((c) => near(hueOf(c), 340, 30)), `no accent opposite green: ${p}`);
+  assert.ok(p.some((c) => near(hueOf(c), 190, 20)) && p.some((c) => near(hueOf(c), 130, 20)), `no neighbours: ${p}`);
+});
+
+await check('Cover palette: two hues get a neighbour each, the cover hues stay first', () => {
+  const p = extractPalette(cover([[230, 40, 40, 0.5], [40, 40, 230, 0.5]]));
+  assert.ok(near(hueOf(p[0]), 0) || near(hueOf(p[0]), 240), `${p}`);
+  assert.ok(near(hueOf(p[1]), 0) || near(hueOf(p[1]), 240), `${p}`);
+  assert.equal(new Set(p).size, 5);
 });
 
 await check('Cover palette: empty or transparent image gives nothing', () => {

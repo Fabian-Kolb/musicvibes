@@ -248,6 +248,7 @@ function MediaControl({ s }) {
   return (
     <div className="field">
       <div className={`level level-${state}`}><span className="dot" />{text}</div>
+      {state === 'ok' && m.coverError && <p className="hint warn-text">{m.coverError} Die Cover-Palette erfindet solange Farben passend zum Song.</p>}
       <p className="hint">{linux
         ? 'Titel und Cover kommen über MPRIS (playerctl) vom Player. Das klappt mit Spotify, Browsern und den meisten Playern, ohne Anmeldung.'
         : 'Titel und Cover kommen von Windows, wie in der Anzeige neben der Lautstärke. Das klappt mit Spotify, Browsern und den meisten Playern, ohne Anmeldung und ohne Premium.'}</p>

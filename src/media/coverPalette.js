@@ -3,8 +3,15 @@
 // The cover's pixels are sorted into hue buckets, weighted by how vivid they are, so a
 // small bright logo counts more than a large dull area. The strongest hues at least
 // 30° apart become the palette, lifted to the brightness the visualizer needs on its
-// dark background. A cover with hardly any colour (black and white photo) gets a
-// silver palette tinted with its average colour.
+// dark background.
+//
+// Covers with few colours get colours made up to go with them, so the picture never
+// turns into five shades of one colour:
+// - one hue: two neighbours on the colour wheel (±30°) and a complementary accent
+// - two hues: a neighbour for each and a light version of the main one
+// - no colour at all (black, white, grey): the faint tint of the cover if there is
+//   one, otherwise a hue from the song's name. The same song always gets the same
+//   colours.
 
 const BINS = 36; // 10° each
 const MIN_GAP = 3; // bins between picked hues (30°)
@@ -31,7 +38,7 @@ function hsvToHex(h, s, v) {
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 
 // rgba: pixel data as from getImageData (r, g, b, a per pixel, 0..255).
-export function extractPalette(rgba, count = 5) {
+export function extractPalette(rgba, { count = 5, seed = '' } = {}) {
   const bins = Array.from({ length: BINS }, () => ({ w: 0, r: 0, g: 0, b: 0 }));
   let pixels = 0, vivid = 0, ar = 0, ag = 0, ab = 0;
   for (let i = 0; i + 3 < rgba.length; i += 4) {
@@ -48,44 +55,52 @@ export function extractPalette(rgba, count = 5) {
   }
   if (!pixels) return null;
 
-  // Hardly any colour: silver tones with a hint of the cover's tint.
-  const silver = () => {
-    const [h, s] = rgbToHsv(ar / pixels, ag / pixels, ab / pixels);
-    const tint = clamp(s * 0.6, 0.06, 0.25);
-    return [[1, 0.95], [0.6, 0.75], [1.4, 0.55], [0.3, 1], [0.9, 0.65]].slice(0, count)
-      .map(([ts, v]) => hsvToHex(h, clamp(tint * ts, 0, 0.35), v));
-  };
-  if (vivid < pixels * 0.01) return silver();
-
-  // Peaks: each bin together with its neighbours, so a hue split over two bins still wins.
-  const score = bins.map((_, i) => bins[i].w + 0.5 * (bins[(i + 1) % BINS].w + bins[(i + BINS - 1) % BINS].w));
   const picks = [];
-  const taken = new Array(BINS).fill(false);
-  while (picks.length < count) {
-    let best = -1;
-    score.forEach((sc, i) => { if (!taken[i] && sc > 0 && (best < 0 || sc > score[best])) best = i; });
-    if (best < 0 || score[best] < vivid * 0.03) break;
-    let w = 0, r = 0, g = 0, b = 0;
-    for (let d = -1; d <= 1; d++) {
-      const x = bins[(best + d + BINS) % BINS];
-      w += x.w; r += x.r; g += x.g; b += x.b;
+  if (vivid >= pixels * 0.01) {
+    // Peaks: each bin with its neighbours, so a hue split over two bins still wins.
+    const score = bins.map((_, i) => bins[i].w + 0.5 * (bins[(i + 1) % BINS].w + bins[(i + BINS - 1) % BINS].w));
+    const taken = new Array(BINS).fill(false);
+    while (picks.length < count) {
+      let best = -1;
+      score.forEach((sc, i) => { if (!taken[i] && sc > 0 && (best < 0 || sc > score[best])) best = i; });
+      if (best < 0 || score[best] < vivid * 0.03) break;
+      let w = 0, r = 0, g = 0, b = 0;
+      for (let d = -1; d <= 1; d++) {
+        const x = bins[(best + d + BINS) % BINS];
+        w += x.w; r += x.r; g += x.g; b += x.b;
+      }
+      const [h, s, v] = rgbToHsv(r / w, g / w, b / w);
+      picks.push([h, clamp(s * 1.15, 0.55, 1), clamp(Math.max(v, 0.85), 0, 1)]);
+      for (let d = -MIN_GAP; d <= MIN_GAP; d++) taken[(best + d + BINS) % BINS] = true;
     }
-    const [h, s, v] = rgbToHsv(r / w, g / w, b / w);
-    picks.push({ h, s: clamp(s * 1.15, 0.55, 1), v: clamp(Math.max(v, 0.85), 0, 1) });
-    for (let d = -MIN_GAP; d <= MIN_GAP; d++) taken[(best + d + BINS) % BINS] = true;
   }
 
-  if (!picks.length) return silver();
-
-  // Fewer hues than colours: lighter and deeper shades of the ones found, a little
-  // turned on the colour wheel, like the Mono palette.
-  const out = picks.map((p) => [p.h, p.s, p.v]);
-  for (let k = 0; out.length < count; k++) {
-    const p = picks[k % picks.length];
-    const round = Math.floor(k / picks.length);
-    const turn = (round % 2 ? -1 : 1) * 0.02 * Math.ceil((round + 1) / 2);
-    const deeper = (k + round) % 2 === 0;
-    out.push([(p.h + turn + 1) % 1, deeper ? Math.min(1, p.s * 1.1) : p.s * 0.65, deeper ? p.v * 0.72 : 1]);
+  const turn = (h, d) => (h + d + 1) % 1;
+  let out;
+  if (picks.length >= 3) {
+    // Enough colours of its own: fill up with a light and a deep version of the main one.
+    const [h, s, v] = picks[0];
+    out = [...picks, [turn(h, 0.03), s * 0.55, 1], [turn(h, -0.03), Math.min(1, s * 1.1), v * 0.75]];
+  } else if (picks.length === 2) {
+    const [a, b] = picks;
+    out = [a, b, [turn(a[0], 0.083), a[1], 0.95], [turn(b[0], -0.083), b[1], 0.95], [a[0], a[1] * 0.55, 1]];
+  } else {
+    let h, s;
+    if (picks.length === 1) {
+      [h, s] = picks[0];
+    } else {
+      const [th, ts] = rgbToHsv(ar / pixels, ag / pixels, ab / pixels);
+      h = ts >= 0.06 ? th : hueFromText(seed);
+      s = 0.7;
+    }
+    out = [[h, s, 1], [turn(h, 0.083), s, 0.95], [turn(h, 0.5), s * 0.9, 1], [turn(h, -0.083), s, 0.9], [h, s * 0.5, 1]];
   }
-  return out.map(([h, s, v]) => hsvToHex(h, s, v));
+  return out.slice(0, count).map(([h, s, v]) => hsvToHex(h, s, v));
+}
+
+// A stable hue (0..1) from a text such as "title|artist".
+export function hueFromText(text) {
+  let x = 2166136261;
+  for (const ch of String(text || '')) x = Math.imul(x ^ ch.codePointAt(0), 16777619) >>> 0;
+  return (x % 3600) / 3600;
 }

@@ -33,9 +33,16 @@ export default function NowPlaying({ mode, idle, uiHandlers }) {
   const visible = mode !== 'off' && hasSong && (mode === 'always' || !idle || flash);
   const playing = m.status === 'playing';
 
+  const cols = m.colors || [];
+  const style = cols.length ? {
+    '--np-glow': cols[0],
+    '--np-strip': `linear-gradient(90deg, ${cols.join(', ')})`,
+    '--np-fill': `linear-gradient(135deg, ${cols[0]}, ${cols[2] || cols[0]})`,
+  } : undefined;
+
   return (
-    <section className={`now-playing${visible ? ' show' : ''}`} aria-label="Läuft gerade" aria-hidden={!visible} inert={!visible}>
-      {m.cover ? <img className="np-cover" src={m.cover} alt="" /> : <span className="np-cover empty"><Music size={22} /></span>}
+    <section className={`now-playing${visible ? ' show' : ''}`} style={style} aria-label="Läuft gerade" aria-hidden={!visible} inert={!visible}>
+      {m.cover ? <img className="np-cover" src={m.cover} alt="" /> : <span className="np-cover empty"><Music size={26} /></span>}
       <div className="np-body">
         <b className="np-title" title={m.title}>{m.title}</b>
         {m.artist && <span className="np-artist" title={m.artist}>{m.artist}</span>}
@@ -44,15 +51,16 @@ export default function NowPlaying({ mode, idle, uiHandlers }) {
           <button type="button" className="icon-btn" disabled={!m.canPrev} onClick={() => mediaCommand('previous')} aria-label="Vorheriger Song" title="Vorheriger Song">
             <SkipBack size={15} />
           </button>
-          <button type="button" className="icon-btn" disabled={!m.canPlayPause} onClick={() => mediaCommand('play-pause')}
+          <button type="button" className="icon-btn np-play" disabled={!m.canPlayPause} onClick={() => mediaCommand('play-pause')}
             aria-label={playing ? 'Pause' : 'Abspielen'} title={playing ? 'Pause' : 'Abspielen'}>
-            {playing ? <Pause size={15} /> : <Play size={15} />}
+            {playing ? <Pause size={16} /> : <Play size={16} />}
           </button>
           <button type="button" className="icon-btn" disabled={!m.canNext} onClick={() => mediaCommand('next')} aria-label="Nächster Song" title="Nächster Song">
             <SkipForward size={15} />
           </button>
         </div>
       </div>
+      {cols.length > 0 && <span className="np-strip" aria-hidden="true" />}
     </section>
   );
 }

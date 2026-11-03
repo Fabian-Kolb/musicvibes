@@ -73,7 +73,7 @@ export const lightStore = createStore({ scanning: false, scanned: false, error: 
 
 // The song that plays (desktop app): written by src/media/nowPlaying.js.
 export const mediaStore = createStore({
-  available: null, reason: '', status: 'none', app: '', title: '', artist: '', album: '', cover: '',
+  available: null, reason: '', status: 'none', app: '', title: '', artist: '', album: '', cover: '', coverError: '',
   canPlayPause: false, canNext: false, canPrev: false, colors: null,
 });
 
