@@ -16,7 +16,8 @@ Unter Windows reicht ein Doppelklick auf `Start.bat`: Es installiert beim ersten
 Die Desktop-App verbindet sich beim Start automatisch mit dem Desktop-Ton:
 
 - **Windows:** WASAPI-Loopback, also genau das, was auf dem Standard-Ausgabegerät läuft. Ein neues Ausgabegerät (Kopfhörer, HDMI) wird automatisch übernommen.
-- **Linux:** PulseAudio/PipeWire-Loopback, ersatzweise das Gerät „Monitor of …“. Findet die App keine Quelle, zeigt sie den Fehler des Loopbacks an. Beim Start mit `npm run app` legt sie einmalig `~/.local/share/applications/vibsync.desktop` an, damit die Taskleiste Name und Symbol zeigt (das AppImage bringt seinen eigenen Eintrag mit).
+<<<<<<< HEAD
+- **Linux:** Die App nimmt das Standard-Ausgabegerät mit `parec` (Paket `pulseaudio-utils`) oder `pw-record` (Paket `pipewire`) auf. Das klappt mit PulseAudio und PipeWire, unter X11 und Wayland, ohne Freigabe-Dialog. Ein neues Ausgabegerät wird automatisch übernommen. Fehlen beide Programme, versucht sie Chromiums Loopback und das Gerät „Monitor of …“. Findet die App keine Quelle, zeigt sie den Fehler des Loopbacks an. Beim Start mit `npm run app` legt sie einmalig `~/.local/share/applications/vibsync.desktop` an, damit die Taskleiste Name und Symbol zeigt (das AppImage bringt seinen eigenen Eintrag mit).
 
 Andere Quellen (Mikrofon, „Stereomix“, virtuelle Kabel) und ein **Testsignal** mit simulierten Songs gibt es unter Einstellungen → Audio.
 
