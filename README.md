@@ -88,6 +88,15 @@ Beim Ausschalten oder Beenden bekommen die Lichter ihren vorigen Zustand zurück
 
 Segmentfarben laufen über den Befehl `razer` (dasselbe Protokoll wie Razer-Chroma-Sync, nachgebaut wie in OpenRGB). Läuft schon ein anderes Programm, das Govee-Lichter steuert (OpenRGB, Govee Desktop), ist Port 4002 belegt; dann dieses Programm schließen.
 
+## Song-Anzeige und Cover-Farben
+
+Die Desktop-App zeigt oben rechts, welcher Song gerade läuft: Cover, Titel, Künstler und Tasten für Zurück, Pause und Weiter (Einstellungen → Musik). Die Daten kommen vom Betriebssystem, nicht von Spotify direkt, deshalb braucht es weder Anmeldung noch Premium, und es klappt auch mit YouTube im Browser und den meisten Playern:
+
+- **Windows:** die Mediensteuerung von Windows (dieselbe Anzeige wie neben der Lautstärke), gelesen von `electron/nowplaying.ps1` über WinRT.
+- **Linux:** MPRIS über `playerctl` (`sudo apt install playerctl`).
+
+Die Palette **Cover** nimmt fünf Farben aus dem Album-Cover und wechselt mit jedem Song, auch auf den Govee-Lichtern. Tempo oder Stimmung liefert Spotify für neue Apps nicht mehr; Beat und Drops erkennt VibSync weiter selbst am Ton.
+
 ## Tests
 
 ```bash
@@ -102,6 +111,7 @@ Die Analyse-Tests spielen synthetische Stimmen, Bass, Kick, Snare und Hi-Hats du
 | Ordner | Inhalt |
 | --- | --- |
 | `electron/` | Desktop-App: Fenster, Loopback-Aufnahme des Desktop-Tons, Govee-Lichter (`govee.cjs`) |
+| `src/media/` | Song, der gerade läuft, und die Palette aus dem Cover |
 | `src/lights/` | Farben und Helligkeit der Lichter aus Musik und Bild |
 | `src/audio/` | Tonquelle starten (Desktop, Gerät, Testsignal) und Frequenzbänder messen (`analysis.js`) |
 | `src/engine/` | Audio-Engine (Auto-Pegel, Kicks, Drive, Drops) und das Testsignal |

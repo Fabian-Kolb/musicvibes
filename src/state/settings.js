@@ -79,6 +79,9 @@ export const DEFAULTS = {
   lightStrobeRate: 12, // Wechsel pro Sekunde
   lightRate: 30, // Updates pro Sekunde an jedes Licht
 
+  // Musik (Song-Anzeige, nur Desktop-App)
+  nowPlaying: 'auto', // off | auto | always
+
   // Anzeige
   quality: 'auto', // auto | high | medium | low
   fpsLimit: 0, // 0 = so schnell wie der Bildschirm

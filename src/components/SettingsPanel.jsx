@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import { X, RotateCcw, Trash2, Search, Plus } from 'lucide-react';
 import { Range, Toggle, Segmented, Select, ColorField, Meter } from './controls';
 import { DEFAULTS, STYLES, BUILTIN_SCENES, SCENE_KEYS, sceneValues, cleanLight } from '../state/settings';
-import { PALETTES, CUSTOM_PALETTE } from '../state/palettes';
+import { PALETTES, CUSTOM_PALETTE, COVER_PALETTE } from '../state/palettes';
 import { GENRES } from '../engine/simulator';
-import { settingsStore, scenesStore, audioStore, liveStore, lightStore, useSettings, useStore, setSetting, resetSettings } from '../state/store';
+import { settingsStore, scenesStore, audioStore, liveStore, lightStore, mediaStore, useSettings, useStore, setSetting, resetSettings } from '../state/store';
+import { CoverSwatch } from './NowPlaying';
 import { desktopBridge, isDesktopApp } from '../audio/capture';
 import { refreshDevices } from '../audio/controller';
 import { strobeMaxRate } from '../render/frame';
@@ -141,6 +142,15 @@ const SECTIONS = [
     ],
   },
   {
+    id: 'music', title: 'Musik', desktop: true,
+    controls: [
+      { type: 'media' },
+      { key: 'nowPlaying', type: 'segmented', label: 'Song anzeigen',
+        options: [{ id: 'off', name: 'Aus' }, { id: 'auto', name: 'Automatisch' }, { id: 'always', name: 'Immer' }],
+        hint: 'Oben rechts mit Cover, Titel und Tasten für Zurück, Pause und Weiter. Automatisch: solange das Menü zu sehen ist und ein paar Sekunden nach jedem Songwechsel' },
+    ],
+  },
+  {
     id: 'display', title: 'Anzeige',
     controls: [
       { key: 'quality', type: 'select', label: 'Qualität', options: [
@@ -174,7 +184,11 @@ function PaletteControl({ s }) {
         <button type="button" className="swatch custom" aria-pressed={custom} title="Eigene Farben"
           style={{ background: `linear-gradient(90deg, ${s.customColors.slice(0, 4).join(', ')})` }}
           onClick={() => setSetting('palette', CUSTOM_PALETTE)}>Eigene</button>
+        <CoverSwatch s={s} />
       </div>
+      {s.palette === COVER_PALETTE && (
+        <p className="hint">Die Farben kommen vom Album-Cover des Songs, der gerade läuft, und wechseln mit jedem Song. Die Lichter übernehmen sie auch.</p>
+      )}
       {custom && (
         <div className="custom-colors">
           {s.customColors.map((c, i) => (
@@ -219,6 +233,24 @@ function LevelControl() {
         <Meter label="Mitte" value={live.mid} />
         <Meter label="Höhen" value={live.high} />
       </div>
+    </div>
+  );
+}
+
+function MediaControl({ s }) {
+  const m = useStore(mediaStore);
+  const linux = desktopBridge?.platform === 'linux';
+  let state = 'ok', text;
+  if (m.available === false) { state = 'off'; text = m.reason; }
+  else if (m.available === null) { state = 'off'; text = s.nowPlaying === 'off' && s.palette !== COVER_PALETTE ? 'Aus' : 'Verbinde …'; }
+  else if (m.status === 'none' || !m.title) { state = 'off'; text = 'Gerade läuft nichts. Starte Spotify oder einen anderen Player.'; }
+  else text = `${m.app}: ${m.title}${m.artist ? ` · ${m.artist}` : ''}`;
+  return (
+    <div className="field">
+      <div className={`level level-${state}`}><span className="dot" />{text}</div>
+      <p className="hint">{linux
+        ? 'Titel und Cover kommen über MPRIS (playerctl) vom Player. Das klappt mit Spotify, Browsern und den meisten Playern, ohne Anmeldung.'
+        : 'Titel und Cover kommen von Windows, wie in der Anzeige neben der Lautstärke. Das klappt mit Spotify, Browsern und den meisten Playern, ohne Anmeldung und ohne Premium.'}</p>
     </div>
   );
 }
@@ -321,6 +353,7 @@ function Control({ c, s }) {
   if (c.type === 'level') return <LevelControl />;
   if (c.type === 'display') return <DisplayControl s={s} />;
   if (c.type === 'lights') return <LightsControl s={s} />;
+  if (c.type === 'media') return <MediaControl s={s} />;
   const label = typeof c.label === 'function' ? c.label(s) : c.label;
   const common = { label, value: s[c.key], onChange: (v) => setSetting(c.key, v), hint: c.hint };
   switch (c.type) {

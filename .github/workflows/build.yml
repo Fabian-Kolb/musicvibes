@@ -30,6 +30,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: node scripts/test-media-win.mjs
       - run: npm run dist:win -- --publish never
       - uses: actions/upload-artifact@v4
         with:

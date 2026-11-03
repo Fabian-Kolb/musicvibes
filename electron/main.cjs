@@ -7,6 +7,7 @@
 const { app, BrowserWindow, session, desktopCapturer, ipcMain, screen, shell, Menu } = require('electron');
 const path = require('node:path');
 const { createGovee } = require('./govee.cjs');
+const { createMedia } = require('./media.cjs');
 
 // Chromium switches system-audio loopback on per platform: PulseAudio/PipeWire on Linux,
 // ScreenCaptureKit on macOS. Windows (WASAPI loopback) needs no flag.
@@ -21,6 +22,8 @@ if (!app.requestSingleInstanceLock()) {
 
 let win = null;
 const govee = createGovee();
+// Song that plays (title, cover) and play/pause/skip, from the system media controls.
+const media = createMedia({ onState: (state) => { if (win) win.webContents.send('vibsync:media-state', state); } });
 
 function displayFor(id) {
   const all = screen.getAllDisplays();
@@ -73,7 +76,7 @@ function createWindow() {
   win.webContents.on('will-navigate', (e, url) => {
     if (!url.startsWith('file://') && !(devUrl && url.startsWith(devUrl))) e.preventDefault();
   });
-  win.on('closed', () => { win = null; govee.end().catch(() => {}); });
+  win.on('closed', () => { win = null; govee.end().catch(() => {}); media.stop(); });
   // A reload starts the page over: the lights get their own state back until it asks again.
   win.webContents.on('did-start-navigation', (e) => { if (e.isMainFrame && !e.isSameDocument) govee.end().catch(() => {}); });
 }
@@ -127,6 +130,11 @@ app.whenReady().then(() => {
   ipcMain.handle('vibsync:lights-end', () => govee.end());
   ipcMain.on('vibsync:lights-frame', (_e, frames) => govee.frame(frames));
 
+  // Now playing.
+  ipcMain.handle('vibsync:media-start', () => media.start());
+  ipcMain.handle('vibsync:media-stop', () => { media.stop(); });
+  ipcMain.handle('vibsync:media-command', (_e, cmd) => { media.command(String(cmd)); });
+
   createWindow();
 });
 
@@ -140,4 +148,5 @@ app.on('before-quit', (e) => {
   Promise.race([settled(), new Promise((r) => setTimeout(r, 1500))]).finally(() => app.quit());
 });
 
+app.on('will-quit', () => media.stop());
 app.on('window-all-closed', () => app.quit());
