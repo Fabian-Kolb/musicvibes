@@ -17,7 +17,7 @@ import { clamp, ema } from '../engine/audioEngine.js';
 // The segment strobe switches random segments (or the whole strip) on and off at a
 // set rate. Without the safety limit there is no cap; the app warns at start.
 
-export const LIGHT_EFFECTS = ['flow', 'wave', 'meter', 'chase', 'sparks'];
+const LIGHT_EFFECTS = ['flow', 'wave', 'meter', 'chase', 'sparks'];
 const CALM = ['flow', 'meter'];
 const BUSY = ['wave', 'chase', 'sparks', 'meter'];
 const LIMIT_RATE = 3; // pulses and flashes per second with the safety limit on

@@ -36,12 +36,12 @@ export const DEFAULT_ENGINE_OPTIONS = {
   dropDetection: true,
 };
 
-export const BANDS = ['bass', 'mid', 'high'];
+const BANDS = ['bass', 'mid', 'high'];
 // Where each band typically sits against the overall level in mixed music, in dB
 // (band level = mean power per bin, overall = summed power). Measured on a pop song,
 // a hip-hop beat, an electronic track and a rock mix, and set a little below the
 // lowest of them, so only a band that is really thin in a song is held down.
-export const TYPICAL_SHARE = [-13, -40, -52];
+const TYPICAL_SHARE = [-13, -40, -52];
 // Within this many dB above the silence floor the meters fade out, so faint hum or
 // hiss just above the floor is not blown up to full scale.
 const FLOOR_MARGIN = 15;
@@ -210,5 +210,5 @@ export function updateEngine(E, raw, dt, options = DEFAULT_ENGINE_OPTIONS) {
   return E;
 }
 
-export const MOODS = [[0.38, 'Ruhig'], [0.55, 'Groove'], [0.78, 'Energie'], [2, 'Peak']];
+const MOODS = [[0.38, 'Ruhig'], [0.55, 'Groove'], [0.78, 'Energie'], [2, 'Peak']];
 export const moodOf = (drive) => MOODS.find((m) => drive < m[0])[1];
