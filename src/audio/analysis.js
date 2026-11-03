@@ -16,6 +16,9 @@
 //   are as loud as the voice.
 // - Onsets are spectral flux: how much each bin rose against its very recent past,
 //   averaged over the band. A new hit shows up even when the band was already busy.
+// - Two spectra: the long one (4096 points, 85 ms) for the levels, because only it
+//   keeps a voice's low end out of the bass; a short one (2048 points, 43 ms) for the
+//   onsets, so a kick is seen about 20 ms sooner and fast kicks are not smeared together.
 
 export const BAND_EDGES = {
   bass: [[35, 100]],
@@ -55,7 +58,8 @@ export function createAnalysis(sampleRate, fftSize) {
 const DB_FLOOR = -160;
 
 // spectrum: Float32Array of dB values per bin (AnalyserNode.getFloatFrequencyData).
-export function analyse(A, spectrum, dt) {
+// fast (optional): { A, spectrum } of the short analyser, used for the onsets.
+export function analyse(A, spectrum, dt, fast = null) {
   const [lo, hi] = A.top;
   let total = 0;
   let peak = DB_FLOOR;
@@ -78,8 +82,18 @@ export function analyse(A, spectrum, dt) {
     out[k] = sum / A.bands[k].length;
   }
 
-  // Spectral flux: rise of each bin over an exponentially smoothed recent past.
-  // Bins far below the loudest one are clamped so noise cannot produce onsets.
+  out.flux = fast ? fluxOf(fast.A, fast.spectrum, dt) : fluxOf(A, spectrum, dt, peak);
+  return out;
+}
+
+// Spectral flux: rise of each bin over an exponentially smoothed recent past.
+// Bins far below the loudest one are clamped so noise cannot produce onsets.
+function fluxOf(A, spectrum, dt, peak) {
+  const [lo, hi] = A.top;
+  if (peak === undefined) {
+    peak = DB_FLOOR;
+    for (let i = lo; i <= hi; i++) if (spectrum[i] > peak) peak = spectrum[i];
+  }
   const floor = peak - FLUX_RANGE;
   const k = 1 - Math.exp(-dt / FLUX_TAU);
   for (let i = lo; i <= hi; i++) {
@@ -87,6 +101,7 @@ export function analyse(A, spectrum, dt) {
     A.clipped[i] = v;
   }
   if (!A.primed) { A.ref.set(A.clipped); A.primed = true; }
+  const flux = { bass: 0, mid: 0, high: 0 };
   for (const b of ['bass', 'mid', 'high']) {
     const [a, z] = A.flux[b];
     let s = 0;
@@ -94,10 +109,10 @@ export function analyse(A, spectrum, dt) {
       const d = A.clipped[i] - A.ref[i];
       if (d > 0) s += d;
     }
-    out.flux[b] = s / (z - a + 1);
+    flux[b] = s / (z - a + 1);
   }
   for (let i = lo; i <= hi; i++) A.ref[i] += (A.clipped[i] - A.ref[i]) * k;
-  return out;
+  return flux;
 }
 
 export const SILENT_FRAME = Object.freeze({ total: -200, bass: -200, mid: -200, high: -200, flux: null, section: '' });

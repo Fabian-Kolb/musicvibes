@@ -72,11 +72,13 @@ export function computeFrame(E, V, S, dt, env = {}) {
 
   const zoomBase = (1.05 + 0.75 * d) / S.size;
   const zoomTarget = zoomBase * Math.max(0.3, 1 - 0.3 * E.bass * r * bi) * Math.max(0.3, 1 - 0.12 * E.punch * r * bp);
-  V.zoom = ema(V.zoom, zoomTarget, dt, 0.12);
+  // Fast toward a hit (the picture jumps with the kick), slow back out of it.
+  V.zoom = ema(V.zoom, zoomTarget, dt, zoomTarget < V.zoom ? 0.025 : 0.15);
   V.warp = ema(V.warp, (0.35 + 0.6 * E.mid * r * mi + 0.35 * E.snap * r * mi + 0.4 * d) * S.form, dt, E.snap > 0.3 ? 0.08 : 0.4);
   V.sharp = ema(V.sharp, 3.2 + 3.0 * d, dt, 1.5);
   // Minimal: bass makes the colour clouds swell, each kick gives a short push.
-  V.size = ema(V.size, (0.17 + 0.09 * E.bass * r * bi + 0.05 * E.punch * r * bp) * S.size, dt, 0.06);
+  const sizeTarget = (0.17 + 0.09 * E.bass * r * bi + 0.05 * E.punch * r * bp) * S.size;
+  V.size = ema(V.size, sizeTarget, dt, sizeTarget > V.size ? 0.02 : 0.09);
 
   // Hue: up to 0.3 the palette only sways around itself; above that it slowly
   // travels round the colour wheel. A drop swings it for a few seconds.

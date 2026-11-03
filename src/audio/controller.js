@@ -7,6 +7,8 @@ import { analyse, createAnalysis, fromLinear, SILENT_FRAME } from './analysis';
 // per frame; nothing here touches React.
 
 let ctx = null, analyser = null, srcNode = null, stream = null, detach = null, freq = null, bands = null;
+// Short analyser for the onsets (kicks, snares, hats): half the window, half the delay.
+let fastAnalyser = null, fastFreq = null, fast = null;
 let current = null;
 let token = 0;
 let simT = 0;
@@ -65,6 +67,11 @@ export async function startSource(source, { userGesture = false } = {}) {
       // -Infinity dB = silence; a zero-filled array would read as full scale before the first block.
       freq = new Float32Array(analyser.frequencyBinCount).fill(-Infinity);
       bands = createAnalysis(ctx.sampleRate, analyser.fftSize);
+      fastAnalyser = ctx.createAnalyser();
+      fastAnalyser.fftSize = 2048;
+      fastAnalyser.smoothingTimeConstant = 0;
+      fastFreq = new Float32Array(fastAnalyser.frequencyBinCount).fill(-Infinity);
+      fast = { A: createAnalysis(ctx.sampleRate, fastAnalyser.fftSize), spectrum: fastFreq };
     }
     const onEnded = () => {
       if (my !== token) return;
@@ -88,6 +95,7 @@ export async function startSource(source, { userGesture = false } = {}) {
     }
     // Analysis only: the analyser is not connected to the speakers, so nothing plays twice.
     srcNode.connect(analyser);
+    srcNode.connect(fastAnalyser);
     version += 1;
     audioStore.set({ state: 'live', label: res.label, message: '' });
     refreshDevices();
@@ -122,5 +130,6 @@ export function read(dt, demoGenre) {
   }
   if (!analyser || !srcNode || ctx.state !== 'running') return SILENT_FRAME;
   analyser.getFloatFrequencyData(freq);
-  return analyse(bands, freq, dt);
+  fastAnalyser.getFloatFrequencyData(fastFreq);
+  return analyse(bands, freq, dt, fast);
 }

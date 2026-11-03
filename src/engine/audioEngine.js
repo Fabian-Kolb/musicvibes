@@ -56,6 +56,7 @@ export function createEngine() {
     now: 0,
     ceil: [null, null, null], gCeil: null,
     level: [0, 0, 0],
+    held: [0, 0, 0], // each band's level held for a moment, for the hit gate
     bass: 0, mid: 0, high: 0,
     kick: onsetDetector(), snare: onsetDetector(), hat: onsetDetector(),
     kickRate: 0, snareRate: 0, hatRate: 0,
@@ -144,9 +145,12 @@ export function updateEngine(E, raw, dt, options = DEFAULT_ENGINE_OPTIONS) {
     });
   }
   // A hit only counts where the band is actually present: a voice's faint low end
-  // rising out of nothing is not a kick.
+  // rising out of nothing is not a kick. The level is held for half a second, so in a
+  // running beat the gate is already open when the next kick's onset arrives (the
+  // onsets come from the faster analyser; the levels would still be catching up).
+  for (let i = 0; i < 3; i++) E.held[i] = quiet ? 0 : Math.max(E.level[i], E.held[i] - dt / 0.5);
   const ks = Math.max(0.2, o.kickSensitivity);
-  const present = (i) => (quiet ? 0 : clamp((E.level[i] - 0.4) / 0.25));
+  const present = (i) => (quiet ? 0 : clamp((E.held[i] - 0.4) / 0.25));
   const kick = onset(E, E.kick, flux.bass * present(0), dt, { minGap: 0.2, minFlux: 1.5 / ks, ratio: 2.2 / ks });
   const snare = onset(E, E.snare, flux.mid * present(1), dt, { minGap: 0.12, minFlux: 1.2, ratio: 2.2 });
   const hat = onset(E, E.hat, flux.high * present(2), dt, { minGap: 0.06, minFlux: 0.8, ratio: 1.9 });

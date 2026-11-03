@@ -19,12 +19,16 @@ function play(sections, opts = {}) {
   const an = createAnalyser({ sampleRate: SR });
   const spec = new Float32Array(an.frequencyBinCount).fill(-Infinity);
   const A = createAnalysis(SR, an.fftSize);
+  // Like the app: a second, shorter analyser for the onsets.
+  const fan = createAnalyser({ sampleRate: SR, fftSize: 2048, smoothing: 0 });
+  const fast = { A: createAnalysis(SR, 2048), spectrum: new Float32Array(fan.frequencyBinCount).fill(-Infinity) };
   const E = createEngine();
   const o = { ...DEFAULT_ENGINE_OPTIONS, ...opts };
   const rows = [];
   for (let end = HOP; end <= pcm.length; end += HOP) {
     an.getFloatFrequencyData(spec, pcm, end);
-    updateEngine(E, analyse(A, spec, DT), DT, o);
+    fan.getFloatFrequencyData(fast.spectrum, pcm, end);
+    updateEngine(E, analyse(A, spec, DT, fast), DT, o);
     rows.push({ t: end / SR, bass: E.bass, mid: E.mid, high: E.high, kick: E.kickEvent, hat: E.hatEvent, drop: E.dropEvent, silent: E.silent });
   }
   const sec = marks.map((m) => {
@@ -35,7 +39,7 @@ function play(sections, opts = {}) {
     return { name: m.name, start: m.start, bass: mean('bass'), mid: mean('mid'), high: mean('high'),
       kicks: rate('kick'), hats: rate('hat'), silent: r.filter((x) => x.silent).length > r.length * 0.8 };
   });
-  return { sec, drops: rows.filter((r) => r.drop).map((r) => r.t), E };
+  return { sec, drops: rows.filter((r) => r.drop).map((r) => r.t), kicks: rows.filter((r) => r.kick).map((r) => r.t), E };
 }
 const fmt = (s) => `${s.name}: bass ${s.bass.toFixed(2)} mid ${s.mid.toFixed(2)} high ${s.high.toFixed(2)} kicks ${s.kicks.toFixed(1)}/s hats ${s.hats.toFixed(1)}/s`;
 const show = (r) => r.sec.map(fmt).join('\n     ');
@@ -121,6 +125,19 @@ check('Hiss far below music counts as silence; quiet music does not', () => {
   assert.ok(hiss.sec[0].silent, show(hiss));
   const quiet = play([{ name: 'quiet song', secs: 6, gainDb: -30, parts: [voice(), pad(), bass(), kick()] }]);
   assert.ok(!quiet.sec[0].silent, show(quiet));
+});
+
+check('Kicks are seen fast: every kick of a groove, on average within 35 ms', () => {
+  const bpm = 120, beat = 60 / bpm;
+  const { kicks } = play([{ name: 'groove', secs: 16, parts: [kick({ bpm }), bass({ bpm }), pad()] }]);
+  const delays = [];
+  for (let k = 8; k < 32; k++) {
+    const hit = kicks.find((t) => t >= k * beat && t < (k + 0.5) * beat);
+    assert.ok(hit !== undefined, `kick ${k} missed`);
+    delays.push(hit - k * beat);
+  }
+  const mean = delays.reduce((a, b) => a + b, 0) / delays.length;
+  assert.ok(mean <= 0.035, `kicks seen after ${Math.round(mean * 1000)} ms on average`);
 });
 
 finish('analysis');

@@ -53,7 +53,7 @@ Der Strobe ist standardmäßig aus. Eingeschaltet blitzt er nur während eines D
 
 ## So wird der Ton ausgewertet
 
-Pro Bild liest die App das Spektrum des Desktop-Tons (FFT mit 4096 Punkten, etwa 12 Hz pro Stufe) und bildet drei Bänder, wie man sie hört:
+Pro Bild liest die App das Spektrum des Desktop-Tons zweimal: lang (FFT mit 4096 Punkten, etwa 12 Hz pro Stufe) für die Pegel, damit die Stimme nicht in den Bass rutscht, und kurz (2048 Punkte) für die Schläge, damit ein Kick nach etwa 20 ms erkannt ist. `node scripts/measure-latency.mjs` misst, wie lange es vom Kick bis zur Reaktion im Bild dauert. Die Bänder sind so gebaut, wie man sie hört:
 
 | Band | Frequenzen | Was darin liegt | Wirkung im Bild |
 | --- | --- | --- | --- |
