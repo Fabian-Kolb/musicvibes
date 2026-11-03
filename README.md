@@ -100,9 +100,11 @@ Die Palette **Cover** nimmt fünf Farben aus dem Album-Cover und wechselt mit je
 ## Tests
 
 ```bash
-npm test     # Audio-Engine, Bild-Logik, Frequenzanalyse und Govee-Lichter
-npm run lint
+npm run check   # alles, was die CI prüft: Lint, Tests und Build
+npm test        # nur die Tests: Audio-Engine, Bild-Logik, Frequenzanalyse, Govee-Lichter, Song-Anzeige
 ```
+
+`npm run check` vor jedem Push laufen lassen, dann bleibt die CI grün. Die CI läuft nur bei Pull Requests, nach einem Merge auf `main` und von Hand (Actions → Build → Run workflow).
 
 Die Analyse-Tests spielen synthetische Stimmen, Bass, Kick, Snare und Hi-Hats durch denselben Analyser wie der Browser und prüfen zum Beispiel, dass eine Stimme die Mitten bewegt und nicht den Bass, und dass der einsetzende Bass die Mitten nicht mitzieht.
 

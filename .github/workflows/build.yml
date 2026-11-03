@@ -1,8 +1,12 @@
 name: Build
 
+# One run per change: on pull requests, on main after a merge, or started by hand.
+# (Before, every push to a PR branch ran twice: once for the push, once for the PR.)
 on:
-  push:
   pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
   test:
