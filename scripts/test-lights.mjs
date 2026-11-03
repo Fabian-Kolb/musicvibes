@@ -2,6 +2,7 @@
 // this computer, and the colours computed from the music.
 // Run: npm test
 import assert from 'node:assert/strict';
+import { check, finish } from './lib/check.mjs';
 import dgram from 'node:dgram';
 import { createRequire } from 'node:module';
 import { createLightState, computeLights } from '../src/lights/lightSync.js';
@@ -12,10 +13,6 @@ import { DEFAULTS, sanitize } from '../src/state/settings.js';
 const require = createRequire(import.meta.url);
 const { createGovee, razerData, isLocalIp, RAZER_ON, RAZER_OFF } = require('../electron/govee.cjs');
 
-let failed = 0;
-async function check(name, fn) {
-  try { await fn(); console.log(`ok   ${name}`); } catch (err) { failed += 1; console.log(`FAIL ${name}\n     ${err.stack}`); }
-}
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const xor = (buf) => buf.subarray(0, -1).reduce((a, b) => a ^ b, 0);
 
@@ -271,5 +268,4 @@ await check('Stored light list is cleaned up', () => {
   assert.deepEqual(s.lightDevices, [{ ip: '192.168.1.5', sku: 'H619E', on: true, mode: 'segments', segments: 100 }]);
 });
 
-if (failed) { console.log(`\n${failed} test(s) failed`); process.exit(1); }
-console.log('\nall light tests passed');
+finish('light');

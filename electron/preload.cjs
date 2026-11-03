@@ -1,6 +1,12 @@
-// The only bridge between the page and the desktop app: window controls, Govee lights
-// and the song that plays (now playing).
+// The only bridge between the page and the desktop app: window controls, Govee lights,
+// the GPU status, (Linux) the desktop sound and the song that plays (now playing).
 const { contextBridge, ipcRenderer } = require('electron');
+
+// Returns the function that removes the listener again.
+function listen(channel, handler) {
+  ipcRenderer.on(channel, handler);
+  return () => ipcRenderer.removeListener(channel, handler);
+}
 
 contextBridge.exposeInMainWorld('vibsync', {
   isDesktop: true,
@@ -26,4 +32,11 @@ contextBridge.exposeInMainWorld('vibsync', {
       return () => ipcRenderer.removeListener('vibsync:media-state', handler);
     },
   },
+  gpuInfo: () => ipcRenderer.invoke('vibsync:gpu-info'),
+  ...(process.platform === 'linux' ? { systemAudio: {
+    start: (rate) => ipcRenderer.invoke('vibsync:sysaudio-start', rate),
+    stop: () => ipcRenderer.invoke('vibsync:sysaudio-stop'),
+    onData: (cb) => listen('vibsync:sysaudio-data', (_e, bytes) => cb(bytes)),
+    onEnded: (cb) => listen('vibsync:sysaudio-ended', () => cb()),
+  } } : {}),
 });

@@ -11,10 +11,12 @@ npm install
 npm run app          # baut die Oberfläche und startet die Desktop-App
 ```
 
+Unter Windows reicht ein Doppelklick auf `Start.bat`: Es installiert beim ersten Mal die Pakete (samt Electron) und startet dann `npm run app`.
+
 Die Desktop-App verbindet sich beim Start automatisch mit dem Desktop-Ton:
 
 - **Windows:** WASAPI-Loopback, also genau das, was auf dem Standard-Ausgabegerät läuft. Ein neues Ausgabegerät (Kopfhörer, HDMI) wird automatisch übernommen.
-- **Linux:** PulseAudio/PipeWire-Loopback, ersatzweise das Gerät „Monitor of …“.
+- **Linux:** Die App nimmt das Standard-Ausgabegerät mit `parec` (Paket `pulseaudio-utils`) oder `pw-record` (Paket `pipewire`) auf. Das klappt mit PulseAudio und PipeWire, unter X11 und Wayland, ohne Freigabe-Dialog. Ein neues Ausgabegerät wird automatisch übernommen. Fehlen beide Programme, versucht sie Chromiums Loopback und das Gerät „Monitor of …“. Findet die App keine Quelle, zeigt sie den Fehler des Loopbacks an. Beim Start mit `npm run app` legt sie einmalig `~/.local/share/applications/vibsync.desktop` an, damit die Taskleiste Name und Symbol zeigt (das AppImage bringt seinen eigenen Eintrag mit).
 
 Andere Quellen (Mikrofon, „Stereomix“, virtuelle Kabel) und ein **Testsignal** mit simulierten Songs gibt es unter Einstellungen → Audio.
 
@@ -47,7 +49,7 @@ Im Browser muss Chrome bei jedem Start fragen: „Gesamter Bildschirm“ wählen
 | S | Strobe an oder aus |
 | Esc | Einstellungen schließen |
 
-Der Strobe ist standardmäßig aus und blitzt dann nur während eines Drops, höchstens dreimal pro Sekunde. Die Grenze lässt sich abschalten.
+Der Strobe ist standardmäßig aus. Eingeschaltet blitzt er nur während eines Drops (oder durchgehend, je nach Einstellung), auf den Kicks oder mit einer festen Rate. Eine feste Obergrenze gibt es nicht; unter Einstellungen → Drops & Strobe lässt sich eine Sicherheitsgrenze von höchstens 3 Blitzen pro Sekunde einschalten (siehe [Lichtblitze](#licht-govee)).
 
 ## So wird der Ton ausgewertet
 
@@ -101,8 +103,18 @@ Die Palette **Cover** nimmt fünf Farben aus dem Album-Cover und wechselt mit je
 
 ```bash
 npm run check   # alles, was die CI prüft: Lint, Tests und Build
-npm test        # nur die Tests: Audio-Engine, Bild-Logik, Frequenzanalyse, Govee-Lichter, Song-Anzeige
+npm test        # nur die Tests
 ```
+
+| Test | Prüft |
+| --- | --- |
+| `scripts/test-engine.mjs` | Audio-Engine mit den simulierten Songs: Drops an der richtigen Stelle, Kicks im Tempo, Drive je Genre, gleiches Verhalten bei leiser Musik |
+| `scripts/test-frame.mjs` | Musik → Bild: Strobe-Sicherheit, Unterschiede der Stile, Palettenwechsel, gespeicherte Einstellungen und Szenen |
+| `scripts/test-analysis.mjs` | Frequenzanalyse mit synthetischen Klängen (siehe unten) |
+| `scripts/test-lights.mjs` | Govee: Pakete, Stream an ein nachgebautes Licht über echtes UDP, Wiederherstellen, Lichteffekte und Licht-Strobe |
+| `scripts/test-system-audio.mjs` | Linux-Desktop-Ton: Rückfall auf den nächsten Recorder, Fehlermeldungen, Wechsel des Ausgabegeräts, Worklet-Puffer der Seite |
+| `scripts/test-media.mjs` | Song-Anzeige: Cover-Palette, Windows-Mediensteuerung und playerctl (mit nachgebauten Programmen) |
+| `scripts/test-media-win.mjs` | Nur in der Windows-CI: das echte PowerShell-Skript der Song-Anzeige |
 
 `npm run check` vor jedem Push laufen lassen, dann bleibt die CI grün. Die CI läuft nur bei Pull Requests, nach einem Merge auf `main` und von Hand (Actions → Build → Run workflow).
 
@@ -120,4 +132,7 @@ Die Analyse-Tests spielen synthetische Stimmen, Bass, Kick, Snare und Hi-Hats du
 | `src/render/` | WebGL-Shader, Renderer und die Abbildung Musik → Bild |
 | `src/state/` | Einstellungen, Szenen, Paletten (ein Objekt, später auch fürs Handy) |
 | `src/components/` | Oberfläche: Visualizer, Leiste, Einstellungen |
-| `scripts/` | Tests; `scripts/lib/` ahmt den Analyser des Browsers nach und erzeugt Testklänge |
+| `scripts/` | Tests; `scripts/lib/` ahmt den Analyser des Browsers nach, erzeugt Testklänge und enthält den Test-Runner |
+| `public/` | Favicon (`vibsync-logo.jpg`) |
+| `build/` | App-Symbol für Installer und Taskleiste |
+| `Start.bat` | Start per Doppelklick unter Windows |

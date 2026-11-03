@@ -3,7 +3,7 @@ import { DEFAULTS, sanitize } from './settings';
 
 // Tiny external store. The render loop calls get() each frame without React being
 // involved; components subscribe with the hooks below.
-export function createStore(initial) {
+function createStore(initial) {
   let state = initial;
   const listeners = new Set();
   return {

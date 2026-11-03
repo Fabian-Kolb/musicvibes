@@ -1,7 +1,7 @@
 // All settings live in one plain object. The render loop reads it every frame and the
 // panel edits it, so a later phone remote only needs to sync this object.
 
-export const DEFAULT_CUSTOM_COLORS = ['#ff00ff', '#00ffff', '#7000ff', '#ff0055', '#00ffcc'];
+const DEFAULT_CUSTOM_COLORS = ['#ff00ff', '#00ffff', '#7000ff', '#ff0055', '#00ffcc'];
 
 export const DEFAULTS = {
   // Bild

@@ -125,6 +125,14 @@ export default function App() {
 
   // Desktop app window options.
   useEffect(() => { desktopBridge?.setAlwaysOnTop?.(s.alwaysOnTop); }, [s.alwaysOnTop]);
+  // WebGL without the GPU caps the frame rate (often around 30 FPS): say so next to the FPS.
+  const [softwareGl, setSoftwareGl] = useState(false);
+  useEffect(() => {
+    desktopBridge?.gpuInfo?.().then((info) => {
+      const gl = info?.webgl2 || info?.webgl || '';
+      setSoftwareGl(!!gl && !gl.startsWith('enabled'));
+    }, () => {});
+  }, []);
   useEffect(() => {
     if (settingsStore.get().fullscreenOnStart) desktopBridge?.setFullscreen?.(true, settingsStore.get().display);
   }, []);
@@ -183,7 +191,7 @@ export default function App() {
       <Visualizer />
       <Hud s={s} />
       <div className="top-right">
-        {s.showFps && <div className="fps">{live.fps} FPS</div>}
+        {s.showFps && <div className="fps">{live.fps} FPS{softwareGl ? ' · Grafik ohne GPU' : ''}</div>}
         {mediaSupported && <NowPlaying mode={s.nowPlaying} idle={idle} uiHandlers={uiHandlers} />}
       </div>
       <Notice />
