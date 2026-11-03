@@ -5,8 +5,41 @@
 // and without capturing the screen picture.
 
 const { app, BrowserWindow, session, desktopCapturer, ipcMain, screen, shell, Menu } = require('electron');
+const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { createGovee } = require('./govee.cjs');
+const { createMedia } = require('./media.cjs');
+const { createSystemAudio } = require('./systemAudio.cjs');
+
+// Name and icon for the taskbar. On Linux (Wayland especially) the window icon is ignored,
+// and the shell reads the icon from a .desktop file. The AppImage build installs one; a
+// plain `npm run app` does not, so write it once for the dev run.
+app.setName('VibSync');
+app.setDesktopName('vibsync.desktop');
+
+function ensureDesktopEntry() {
+  if (process.platform !== 'linux' || app.isPackaged) return;
+  const dir = path.join(os.homedir(), '.local', 'share', 'applications');
+  const file = path.join(dir, 'vibsync.desktop');
+  if (fs.existsSync(file)) return;
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(file, [
+      '[Desktop Entry]',
+      'Name=VibSync',
+      'Comment=Musik-Visualizer',
+      `Exec=${process.execPath} ${path.join(__dirname, '..')}`,
+      `Icon=${path.join(__dirname, '..', 'build', 'icon.png')}`,
+      'Type=Application',
+      'Categories=AudioVideo;',
+      'StartupWMClass=VibSync',
+      '',
+    ].join('\n'));
+  } catch (err) {
+    console.warn('Desktop-Eintrag konnte nicht angelegt werden:', err.message);
+  }
+}
 
 // Chromium switches system-audio loopback on per platform: PulseAudio/PipeWire on Linux,
 // ScreenCaptureKit on macOS. Windows (WASAPI loopback) needs no flag.
@@ -15,12 +48,20 @@ const existing = app.commandLine.getSwitchValue('enable-features');
 if (existing) app.commandLine.removeSwitch('enable-features');
 app.commandLine.appendSwitch('enable-features', [existing, ...LOOPBACK_FEATURES].filter(Boolean).join(','));
 
+// Many Linux drivers are on Chromium's GPU blocklist. WebGL then runs in software and the
+// picture stalls at around 30 FPS, so use the GPU anyway (Chromium still falls back to
+// software if the GPU process keeps crashing).
+if (process.platform === 'linux') app.commandLine.appendSwitch('ignore-gpu-blocklist');
+
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 }
 
 let win = null;
 const govee = createGovee();
+// Song that plays (title, cover) and play/pause/skip, from the system media controls.
+const media = createMedia({ onState: (state) => { if (win) win.webContents.send('vibsync:media-state', state); } });
+const systemAudio = createSystemAudio();
 
 function displayFor(id) {
   const all = screen.getAllDisplays();
@@ -73,9 +114,9 @@ function createWindow() {
   win.webContents.on('will-navigate', (e, url) => {
     if (!url.startsWith('file://') && !(devUrl && url.startsWith(devUrl))) e.preventDefault();
   });
-  win.on('closed', () => { win = null; govee.end().catch(() => {}); });
+  win.on('closed', () => { win = null; govee.end().catch(() => {}); systemAudio.stop(); media.stop(); });
   // A reload starts the page over: the lights get their own state back until it asks again.
-  win.webContents.on('did-start-navigation', (e) => { if (e.isMainFrame && !e.isSameDocument) govee.end().catch(() => {}); });
+  win.webContents.on('did-start-navigation', (e) => { if (e.isMainFrame && !e.isSameDocument) { govee.end().catch(() => {}); systemAudio.stop(); } });
 }
 
 app.on('second-instance', () => {
@@ -85,6 +126,11 @@ app.on('second-instance', () => {
 });
 
 app.whenReady().then(() => {
+  ensureDesktopEntry();
+  // Without hardware acceleration the shader runs on the CPU and the frame rate drops.
+  // The log shows which path Chromium took, so a 30-FPS report can be checked.
+  app.getGPUFeatureStatus && console.info('GPU:', JSON.stringify(app.getGPUFeatureStatus()));
+
   const ses = session.defaultSession;
 
   // Only microphone/device access and the loopback capture are allowed.
@@ -127,6 +173,15 @@ app.whenReady().then(() => {
   ipcMain.handle('vibsync:lights-end', () => govee.end());
   ipcMain.on('vibsync:lights-frame', (_e, frames) => govee.frame(frames));
 
+  // Now playing.
+  ipcMain.handle('vibsync:media-start', () => media.start());
+  ipcMain.handle('vibsync:media-stop', () => { media.stop(); });
+  ipcMain.handle('vibsync:media-command', (_e, cmd) => { media.command(String(cmd)); });
+  // Linux desktop sound recorded with parec / pw-record (see systemAudio.cjs).
+  ipcMain.handle('vibsync:sysaudio-start', (e, rate) => systemAudio.start(e.sender, Math.min(192000, Math.max(8000, Math.round(Number(rate)) || 48000))));
+  ipcMain.handle('vibsync:sysaudio-stop', () => systemAudio.stop());
+  ipcMain.handle('vibsync:gpu-info', () => app.getGPUFeatureStatus());
+
   createWindow();
 });
 
@@ -140,4 +195,5 @@ app.on('before-quit', (e) => {
   Promise.race([settled(), new Promise((r) => setTimeout(r, 1500))]).finally(() => app.quit());
 });
 
+app.on('will-quit', () => { systemAudio.stop(); media.stop(); });
 app.on('window-all-closed', () => app.quit());

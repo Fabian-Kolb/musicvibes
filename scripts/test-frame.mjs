@@ -2,6 +2,7 @@
 // style differences, palette fades and stored settings.
 // Run: npm test
 import assert from 'node:assert/strict';
+import { check, finish } from './lib/check.mjs';
 import { createEngine, updateEngine, DEFAULT_ENGINE_OPTIONS } from '../src/engine/audioEngine.js';
 import { genreById, simulate } from '../src/engine/simulator.js';
 import { fromLinear } from '../src/audio/analysis.js';
@@ -9,10 +10,6 @@ import { computeFrame, createVisualState } from '../src/render/frame.js';
 import { DEFAULTS, SCENE_KEYS, BUILTIN_SCENES, sceneValues, sanitize } from '../src/state/settings.js';
 
 const DT = 1 / 60;
-let failed = 0;
-function check(name, fn) {
-  try { fn(); console.log(`ok   ${name}`); } catch (err) { failed += 1; console.log(`FAIL ${name}\n     ${err.message}`); }
-}
 
 // Runs a simulated song through engine and mapping; returns flash times and stats.
 function play(settings, genreId = 'techno', seconds = 75) {
@@ -113,5 +110,4 @@ check('Stored settings with wrong types fall back to the defaults', () => {
   assert.equal(s.gain, 2);
 });
 
-if (failed) { console.log(`\n${failed} test(s) failed`); process.exit(1); }
-console.log('\nall frame tests passed');
+finish('frame');

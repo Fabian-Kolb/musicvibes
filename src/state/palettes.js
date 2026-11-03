@@ -10,8 +10,16 @@ export const PALETTES = [
 
 export const CUSTOM_PALETTE = 'custom';
 
+// "Cover": colours from the album cover of the song that plays (desktop app). Until a
+// cover has been read, the first palette stands in.
+export const COVER_PALETTE = 'cover';
+let coverCols = null;
+export const setCoverColors = (cols) => { coverCols = Array.isArray(cols) && cols.length === 5 ? cols : null; };
+export const coverColors = () => coverCols;
+
 export function paletteColors(settings) {
   if (settings.palette === CUSTOM_PALETTE) return settings.customColors;
+  if (settings.palette === COVER_PALETTE) return coverCols || PALETTES[0].cols;
   return (PALETTES.find((p) => p.id === settings.palette) || PALETTES[0]).cols;
 }
 

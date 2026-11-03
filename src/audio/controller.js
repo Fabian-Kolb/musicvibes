@@ -6,7 +6,7 @@ import { analyse, createAnalysis, fromLinear, SILENT_FRAME } from './analysis';
 // Owns the current audio source and the analyser. The render loop calls read() once
 // per frame; nothing here touches React.
 
-let ctx = null, analyser = null, srcNode = null, stream = null, freq = null, bands = null;
+let ctx = null, analyser = null, srcNode = null, stream = null, detach = null, freq = null, bands = null;
 let current = null;
 let token = 0;
 let simT = 0;
@@ -19,6 +19,12 @@ export const currentSource = () => current;
 function release() {
   if (srcNode) { srcNode.disconnect(); srcNode = null; }
   if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; }
+  if (detach) { detach(); detach = null; }
+}
+
+function discard(res) {
+  res.stop?.();
+  res.stream?.getTracks().forEach((t) => t.stop());
 }
 
 export async function refreshDevices() {
@@ -48,10 +54,10 @@ export async function startSource(source, { userGesture = false } = {}) {
   }
   audioStore.set({ state: 'starting', label: source === 'desktop' ? 'Desktop-Audio' : 'Audiogerät', message: '' });
   try {
-    const res = source === 'desktop' ? await captureDesktop() : await captureDevice(source);
-    if (my !== token) { res.stream.getTracks().forEach((t) => t.stop()); return; }
     ctx = ctx || new AudioContext({ latencyHint: 'interactive' });
     if (ctx.state === 'suspended') await ctx.resume().catch(() => {});
+    const res = source === 'desktop' ? await captureDesktop(ctx) : await captureDevice(source);
+    if (my !== token) { discard(res); return; }
     if (!analyser) {
       analyser = ctx.createAnalyser();
       analyser.fftSize = 4096; // ~12 Hz per bin at 48 kHz: tight enough to separate kick from voice
@@ -60,11 +66,7 @@ export async function startSource(source, { userGesture = false } = {}) {
       freq = new Float32Array(analyser.frequencyBinCount).fill(-Infinity);
       bands = createAnalysis(ctx.sampleRate, analyser.fftSize);
     }
-    stream = res.stream;
-    srcNode = ctx.createMediaStreamSource(stream);
-    // Analysis only: the analyser is not connected to the speakers, so nothing plays twice.
-    srcNode.connect(analyser);
-    stream.getAudioTracks().forEach((t) => t.addEventListener('ended', () => {
+    const onEnded = () => {
       if (my !== token) return;
       if (isDesktopApp) {
         // Usually the output device changed (headphones plugged in): reconnect.
@@ -74,7 +76,18 @@ export async function startSource(source, { userGesture = false } = {}) {
         release();
         audioStore.set({ state: 'error', message: 'Die Freigabe wurde beendet.' });
       }
-    }));
+    };
+    if (res.node) {
+      srcNode = res.node;
+      detach = res.stop;
+      res.onEnded(onEnded);
+    } else {
+      stream = res.stream;
+      srcNode = ctx.createMediaStreamSource(stream);
+      stream.getAudioTracks().forEach((t) => t.addEventListener('ended', onEnded));
+    }
+    // Analysis only: the analyser is not connected to the speakers, so nothing plays twice.
+    srcNode.connect(analyser);
     version += 1;
     audioStore.set({ state: 'live', label: res.label, message: '' });
     refreshDevices();
@@ -107,7 +120,7 @@ export function read(dt, demoGenre) {
     simT += dt;
     return fromLinear(simulate(genreById(demoGenre), simT));
   }
-  if (!analyser || !stream || ctx.state !== 'running') return SILENT_FRAME;
+  if (!analyser || !srcNode || ctx.state !== 'running') return SILENT_FRAME;
   analyser.getFloatFrequencyData(freq);
   return analyse(bands, freq, dt);
 }

@@ -3,6 +3,7 @@
 // (scripts/lib/webaudio.mjs), then through analysis.js and the audio engine.
 // Run: npm test
 import assert from 'node:assert/strict';
+import { check, finish } from './lib/check.mjs';
 import { createAnalyser } from './lib/webaudio.mjs';
 import { SR, render, voice, pad, bass, kick, hats, snare, noise } from './lib/synth.mjs';
 import { createAnalysis, analyse } from '../src/audio/analysis.js';
@@ -10,10 +11,6 @@ import { createEngine, updateEngine, DEFAULT_ENGINE_OPTIONS } from '../src/engin
 
 const HOP = 800; // one analyser read per frame at 60 fps
 const DT = HOP / SR;
-let failed = 0;
-function check(name, fn) {
-  try { fn(); console.log(`ok   ${name}`); } catch (err) { failed += 1; console.log(`FAIL ${name}\n     ${err.message}`); }
-}
 
 // Plays sections through analyser, analysis and engine. Returns per-section means of
 // the meters and hit rates, plus drop times.
@@ -126,5 +123,4 @@ check('Hiss far below music counts as silence; quiet music does not', () => {
   assert.ok(!quiet.sec[0].silent, show(quiet));
 });
 
-if (failed) { console.log(`\n${failed} test(s) failed`); process.exit(1); }
-console.log('\nall analysis tests passed');
+finish('analysis');

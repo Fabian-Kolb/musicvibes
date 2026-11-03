@@ -1,5 +1,12 @@
-// The only bridge between the page and the desktop app: window controls and Govee lights.
+// The only bridge between the page and the desktop app: window controls, Govee lights,
+// the GPU status, (Linux) the desktop sound and the song that plays (now playing).
 const { contextBridge, ipcRenderer } = require('electron');
+
+// Returns the function that removes the listener again.
+function listen(channel, handler) {
+  ipcRenderer.on(channel, handler);
+  return () => ipcRenderer.removeListener(channel, handler);
+}
 
 contextBridge.exposeInMainWorld('vibsync', {
   isDesktop: true,
@@ -15,4 +22,21 @@ contextBridge.exposeInMainWorld('vibsync', {
     end: () => ipcRenderer.invoke('vibsync:lights-end'),
     frame: (frames) => ipcRenderer.send('vibsync:lights-frame', frames),
   },
+  media: {
+    start: () => ipcRenderer.invoke('vibsync:media-start'),
+    stop: () => ipcRenderer.invoke('vibsync:media-stop'),
+    command: (cmd) => ipcRenderer.invoke('vibsync:media-command', cmd),
+    onState: (cb) => {
+      const handler = (_e, state) => cb(state);
+      ipcRenderer.on('vibsync:media-state', handler);
+      return () => ipcRenderer.removeListener('vibsync:media-state', handler);
+    },
+  },
+  gpuInfo: () => ipcRenderer.invoke('vibsync:gpu-info'),
+  ...(process.platform === 'linux' ? { systemAudio: {
+    start: (rate) => ipcRenderer.invoke('vibsync:sysaudio-start', rate),
+    stop: () => ipcRenderer.invoke('vibsync:sysaudio-stop'),
+    onData: (cb) => listen('vibsync:sysaudio-data', (_e, bytes) => cb(bytes)),
+    onEnded: (cb) => listen('vibsync:sysaudio-ended', () => cb()),
+  } } : {}),
 });

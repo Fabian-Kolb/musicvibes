@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "test": "node scripts/test-engine.mjs && node scripts/test-frame.mjs && node scripts/test-analysis.mjs && node scripts/test-lights.mjs",
+    "test": "node scripts/test-engine.mjs && node scripts/test-frame.mjs && node scripts/test-analysis.mjs && node scripts/test-lights.mjs && node scripts/test-system-audio.mjs && node scripts/test-media.mjs",
+    "check": "npm run lint && npm test && npm run build",
     "app": "vite build && electron .",
     "dist:win": "vite build && electron-builder --win",
     "dist:linux": "vite build && electron-builder --linux"

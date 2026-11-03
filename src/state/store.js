@@ -3,7 +3,7 @@ import { DEFAULTS, sanitize } from './settings';
 
 // Tiny external store. The render loop calls get() each frame without React being
 // involved; components subscribe with the hooks below.
-export function createStore(initial) {
+function createStore(initial) {
   let state = initial;
   const listeners = new Set();
   return {
@@ -70,6 +70,12 @@ export const audioStore = createStore({
 
 // Govee lights: last scan and connection problems, written by the panel and the render loop.
 export const lightStore = createStore({ scanning: false, scanned: false, error: '', testing: '' });
+
+// The song that plays (desktop app): written by src/media/nowPlaying.js.
+export const mediaStore = createStore({
+  available: null, reason: '', status: 'none', app: '', title: '', artist: '', album: '', cover: '',
+  canPlayPause: false, canNext: false, canPrev: false, colors: null,
+});
 
 export const useStore = (store) => useSyncExternalStore(store.subscribe, store.get);
 export const useSettings = () => useStore(settingsStore);

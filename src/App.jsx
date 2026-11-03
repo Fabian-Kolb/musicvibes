@@ -2,10 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Settings, Maximize2, EyeOff, Zap, Play, RotateCw } from 'lucide-react';
 import Visualizer from './components/Visualizer';
 import SettingsPanel from './components/SettingsPanel';
+import NowPlaying, { CoverSwatch } from './components/NowPlaying';
 import { Segmented, Meter } from './components/controls';
 import { STYLES } from './state/settings';
-import { PALETTES, CUSTOM_PALETTE } from './state/palettes';
+import { PALETTES, CUSTOM_PALETTE, COVER_PALETTE } from './state/palettes';
 import { settingsStore, audioStore, liveStore, useSettings, useStore, setSetting } from './state/store';
+import { mediaSupported, startNowPlaying, stopNowPlaying } from './media/nowPlaying';
 import { startSource } from './audio/controller';
 import { desktopBridge } from './audio/capture';
 
@@ -114,8 +116,23 @@ export default function App() {
   // Start (or switch) the audio source whenever the setting changes.
   useEffect(() => { startSource(s.source); }, [s.source]);
 
+  // Song that plays: only asked for while the song is shown or its cover gives the colours.
+  const wantMedia = mediaSupported && (s.nowPlaying !== 'off' || s.palette === COVER_PALETTE);
+  useEffect(() => {
+    if (wantMedia) startNowPlaying();
+    else stopNowPlaying();
+  }, [wantMedia]);
+
   // Desktop app window options.
   useEffect(() => { desktopBridge?.setAlwaysOnTop?.(s.alwaysOnTop); }, [s.alwaysOnTop]);
+  // WebGL without the GPU caps the frame rate (often around 30 FPS): say so next to the FPS.
+  const [softwareGl, setSoftwareGl] = useState(false);
+  useEffect(() => {
+    desktopBridge?.gpuInfo?.().then((info) => {
+      const gl = info?.webgl2 || info?.webgl || '';
+      setSoftwareGl(!!gl && !gl.startsWith('enabled'));
+    }, () => {});
+  }, []);
   useEffect(() => {
     if (settingsStore.get().fullscreenOnStart) desktopBridge?.setFullscreen?.(true, settingsStore.get().display);
   }, []);
@@ -173,7 +190,10 @@ export default function App() {
     <div className={`app${idle ? ' idle' : ''}${panel ? ' panel-open' : ''}`}>
       <Visualizer />
       <Hud s={s} />
-      {s.showFps && <div className="fps">{live.fps} FPS</div>}
+      <div className="top-right">
+        {s.showFps && <div className="fps">{live.fps} FPS{softwareGl ? ' · Grafik ohne GPU' : ''}</div>}
+        {mediaSupported && <NowPlaying mode={s.nowPlaying} idle={idle} uiHandlers={uiHandlers} />}
+      </div>
       <Notice />
       <StartWarning />
       <div className="dock ui" {...uiHandlers}>
@@ -186,6 +206,7 @@ export default function App() {
               aria-pressed={s.palette === p.id} style={{ background: `linear-gradient(90deg, ${p.cols.slice(0, 4).join(', ')})` }}
               onClick={() => setSetting('palette', p.id)} />
           ))}
+          <CoverSwatch s={s} />
         </div>
         <span className="spacer" />
         <button type="button" className={`strobe${s.strobe ? ' on' : ''}`} aria-pressed={s.strobe} onClick={() => setSetting('strobe', !s.strobe)}
