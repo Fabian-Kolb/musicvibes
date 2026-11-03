@@ -10,7 +10,7 @@ import path from 'node:path';
 if (process.platform !== 'win32') { console.log('skipped: Windows only'); process.exit(0); }
 
 const script = fs.readFileSync(path.join(import.meta.dirname, '..', 'electron', 'nowplaying.ps1'), 'utf8');
-assert.ok(/^[\x00-\x7f]*$/.test(script), 'nowplaying.ps1 must be ASCII');
+assert.ok([...script].every((c) => c.charCodeAt(0) < 128), 'nowplaying.ps1 must be ASCII');
 const exe = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
 const p = spawn(exe, ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
   '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { windowsHide: true });
