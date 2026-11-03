@@ -3,6 +3,7 @@
 // the recorder splits them, and tells the page when the stream ends.
 import { createRequire } from 'node:module';
 import assert from 'node:assert/strict';
+import { check, finish } from './lib/check.mjs';
 
 const require = createRequire(import.meta.url);
 const { createSystemAudio } = require('../electron/systemAudio.cjs');
@@ -30,12 +31,8 @@ function fakeWebContents() {
 }
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-let failures = 0;
-async function test(name, fn) {
-  try { await fn(); console.log(`ok   ${name}`); } catch (err) { failures += 1; console.log(`FAIL ${name}\n     ${err.message}`); }
-}
 
-await test('falls back to the next recorder and passes whole samples on', async () => {
+await check('falls back to the next recorder and passes whole samples on', async () => {
   const sys = createSystemAudio({ tools: [missing, broken, { ...node(SPLIT), label: 'Ersatz' }], settleMs: 300 });
   const wc = fakeWebContents();
   const res = await sys.start(wc, 48000);
@@ -51,14 +48,14 @@ await test('falls back to the next recorder and passes whole samples on', async 
   assert.equal(sys.running(), false);
 });
 
-await test('names every reason when no recorder works', async () => {
+await check('names every reason when no recorder works', async () => {
   const sys = createSystemAudio({ tools: [missing, broken], settleMs: 300 });
   const res = await sys.start(fakeWebContents(), 48000);
   assert.match(res.error, /vibsync-no-such-recorder: nicht installiert/);
   assert.match(res.error, /Verbindung abgelehnt/);
 });
 
-await test('tells the page when the recorder stops by itself', async () => {
+await check('tells the page when the recorder stops by itself', async () => {
   const sys = createSystemAudio({ tools: [{ ...node('setTimeout(() => process.exit(0), 400)'), label: 'Kurz' }], settleMs: 200 });
   const wc = fakeWebContents();
   assert.equal((await sys.start(wc, 48000)).ok, true);
@@ -66,7 +63,7 @@ await test('tells the page when the recorder stops by itself', async () => {
   assert.equal(wc.got.ended, 1);
 });
 
-await test('a new default output ends the stream so the page reconnects', async () => {
+await check('a new default output ends the stream so the page reconnects', async () => {
   const watcher = [process.execPath, ['-e', "setTimeout(() => console.log(\"Event 'change' on server #0\"), 300); setInterval(() => {}, 1000)"]];
   const sys = createSystemAudio({ tools: [{ ...node('setInterval(() => {}, 1000)'), label: 'Lang', watch: watcher }], settleMs: 200 });
   const wc = fakeWebContents();
@@ -76,7 +73,7 @@ await test('a new default output ends the stream so the page reconnects', async 
   assert.equal(sys.running(), false);
 });
 
-await test('passes the sample rate to the recorder', async () => {
+await check('passes the sample rate to the recorder', async () => {
   let seen = 0;
   const sys = createSystemAudio({ tools: [{ cmd: process.execPath, label: 'Rate', args: (rate) => { seen = rate; return ['-e', 'setInterval(() => {}, 1000)']; } }], settleMs: 100 });
   await sys.start(fakeWebContents(), 44100);
@@ -101,14 +98,14 @@ function loadWorklet(rate) {
   };
 }
 
-await test('worklet plays samples in order across blocks and is silent when empty', async () => {
+await check('worklet plays samples in order across blocks and is silent when empty', async () => {
   const w = loadWorklet(1000);
   w.push([1, 2, 3]); w.push([4, 5]);
   assert.deepEqual(w.pull(4), [1, 2, 3, 4]);
   assert.deepEqual(w.pull(4), [5, 0, 0, 0]);
 });
 
-await test('worklet drops the oldest samples beyond ~80 ms', async () => {
+await check('worklet drops the oldest samples beyond ~80 ms', async () => {
   const w = loadWorklet(1000); // 80 samples at 1 kHz
   for (let i = 0; i < 5; i++) w.push(new Array(30).fill(i + 1));
   // Whole blocks go while more than 80 are queued: blocks 4 and 5 stay (60 samples).
@@ -116,5 +113,4 @@ await test('worklet drops the oldest samples beyond ~80 ms', async () => {
   assert.deepEqual(w.pull(60).slice(-2), [5, 0]);
 });
 
-if (failures) { console.log(`\n${failures} test(s) failed`); process.exit(1); }
-console.log('\nsystem audio: all tests passed');
+finish('system audio');

@@ -16,7 +16,6 @@ Unter Windows reicht ein Doppelklick auf `Start.bat`: Es installiert beim ersten
 Die Desktop-App verbindet sich beim Start automatisch mit dem Desktop-Ton:
 
 - **Windows:** WASAPI-Loopback, also genau das, was auf dem Standard-Ausgabegerät läuft. Ein neues Ausgabegerät (Kopfhörer, HDMI) wird automatisch übernommen.
-<<<<<<< HEAD
 - **Linux:** Die App nimmt das Standard-Ausgabegerät mit `parec` (Paket `pulseaudio-utils`) oder `pw-record` (Paket `pipewire`) auf. Das klappt mit PulseAudio und PipeWire, unter X11 und Wayland, ohne Freigabe-Dialog. Ein neues Ausgabegerät wird automatisch übernommen. Fehlen beide Programme, versucht sie Chromiums Loopback und das Gerät „Monitor of …“. Findet die App keine Quelle, zeigt sie den Fehler des Loopbacks an. Beim Start mit `npm run app` legt sie einmalig `~/.local/share/applications/vibsync.desktop` an, damit die Taskleiste Name und Symbol zeigt (das AppImage bringt seinen eigenen Eintrag mit).
 
 Andere Quellen (Mikrofon, „Stereomix“, virtuelle Kabel) und ein **Testsignal** mit simulierten Songs gibt es unter Einstellungen → Audio.
@@ -94,7 +93,7 @@ Segmentfarben laufen über den Befehl `razer` (dasselbe Protokoll wie Razer-Chro
 ## Tests
 
 ```bash
-npm test     # Audio-Engine, Bild-Logik, Frequenzanalyse und Govee-Lichter
+npm test     # Audio-Engine, Bild-Logik, Frequenzanalyse, Govee-Lichter und Linux-Desktop-Ton
 npm run lint
 ```
 
@@ -104,6 +103,7 @@ npm run lint
 | `scripts/test-frame.mjs` | Musik → Bild: Strobe-Sicherheit, Unterschiede der Stile, Palettenwechsel, gespeicherte Einstellungen und Szenen |
 | `scripts/test-analysis.mjs` | Frequenzanalyse mit synthetischen Klängen (siehe unten) |
 | `scripts/test-lights.mjs` | Govee: Pakete, Stream an ein nachgebautes Licht über echtes UDP, Wiederherstellen, Lichteffekte und Licht-Strobe |
+| `scripts/test-system-audio.mjs` | Linux-Desktop-Ton: Rückfall auf den nächsten Recorder, Fehlermeldungen, Wechsel des Ausgabegeräts, Worklet-Puffer der Seite |
 
 Alle Tests nutzen den kleinen Runner in `scripts/lib/check.mjs`. GitHub Actions führt bei jedem Push Lint, Tests und Build aus, bevor der Windows-Installer gebaut wird.
 
