@@ -20,17 +20,13 @@ try {
   $T_Manager = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media.Control, ContentType = WindowsRuntime]
   $T_Props = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMediaProperties, Windows.Media.Control, ContentType = WindowsRuntime]
   $T_Stream = [Windows.Storage.Streams.IRandomAccessStreamWithContentType, Windows.Storage.Streams, ContentType = WindowsRuntime]
-  $T_Reader = [Windows.Storage.Streams.DataReader, Windows.Storage.Streams, ContentType = WindowsRuntime]
-  $T_Buffer = [Windows.Storage.Streams.Buffer, Windows.Storage.Streams, ContentType = WindowsRuntime]
-  $T_IBuffer = [Windows.Storage.Streams.IBuffer, Windows.Storage.Streams, ContentType = WindowsRuntime]
-  $T_Options = [Windows.Storage.Streams.InputStreamOptions, Windows.Storage.Streams, ContentType = WindowsRuntime]
+  $T_RandomAccess = [Windows.Storage.Streams.IRandomAccessStream, Windows.Storage.Streams, ContentType = WindowsRuntime]
+  $T_Input = [Windows.Storage.Streams.IInputStream, Windows.Storage.Streams, ContentType = WindowsRuntime]
+  $T_ContentType = [Windows.Storage.Streams.IContentTypeProvider, Windows.Storage.Streams, ContentType = WindowsRuntime]
 
   # WinRT async calls become .NET tasks through WindowsRuntimeSystemExtensions.AsTask.
   $AsTask = [System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
     $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1'
-  } | Select-Object -First 1
-  $AsTaskProgress = [System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
-    $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperationWithProgress`2'
   } | Select-Object -First 1
 
   function Await($op, [Type]$type) {
@@ -64,39 +60,10 @@ function Pick-Session {
   return $best
 }
 
-# The cover comes as a WinRT stream. Three ways to get its bytes, because not every
-# Windows build lets PowerShell use each of them; what failed is reported as coverError.
+# The cover comes as a WinRT stream. Windows PowerShell 5.1 hands it over as a bare
+# COM object without its WinRT members ($stream.Size is empty), so size, type and bytes
+# are read through the interfaces by reflection. What failed is reported as coverError.
 $script:CoverError = ''
-
-function Read-Bytes($stream, $size) {
-  $errors = @()
-  try {
-    $net = [System.IO.WindowsRuntimeStreamExtensions]::AsStreamForRead([Windows.Storage.Streams.IInputStream]$stream)
-    $ms = New-Object System.IO.MemoryStream
-    $net.CopyTo($ms)
-    if ($ms.Length -gt 0) { return ,$ms.ToArray() }
-    $errors += 'stream: empty'
-  } catch { $errors += "stream: $($_.Exception.Message)" }
-  try {
-    $buf = $T_Buffer::new([uint32]$size)
-    $op = $stream.ReadAsync($buf, [uint32]$size, $T_Options::None)
-    $task = $AsTaskProgress.MakeGenericMethod($T_IBuffer, [uint32]).Invoke($null, @($op))
-    if (-not $task.Wait(4000)) { throw 'timed out' }
-    $bytes = [System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBufferExtensions]::ToArray($task.Result)
-    if ($bytes.Length -gt 0) { return ,$bytes }
-    $errors += 'buffer: empty'
-  } catch { $errors += "buffer: $($_.Exception.Message)" }
-  try {
-    $reader = $T_Reader::new($stream.GetInputStreamAt(0))
-    $null = Await ($reader.LoadAsync([uint32]$size)) ([uint32])
-    $bytes = New-Object byte[] $size
-    $reader.ReadBytes($bytes)
-    if ($bytes.Length -gt 0) { return ,$bytes }
-    $errors += 'reader: empty'
-  } catch { $errors += "reader: $($_.Exception.Message)" }
-  $script:CoverError = ($errors -join ' | ')
-  return $null
-}
 
 function Read-Cover($props) {
   $script:CoverError = ''
@@ -105,19 +72,28 @@ function Read-Cover($props) {
   $stream = $null
   try {
     $stream = Await ($props.Thumbnail.OpenReadAsync()) $T_Stream
-    $size = [int64]$stream.Size
+    $size = [int64]$T_RandomAccess.GetProperty('Size').GetValue($stream)
     if ($size -le 0) { $script:CoverError = 'empty'; return '' }
     if ($size -gt 4MB) { $script:CoverError = 'too-big'; return '' }
-    $bytes = Read-Bytes $stream $size
-    if ($null -eq $bytes) { return '' }
-    $mime = "$($stream.ContentType)"
-    if ($mime -notmatch '^image/') { $mime = 'image/jpeg' }
+    $net = [System.IO.WindowsRuntimeStreamExtensions].GetMethod('AsStreamForRead', [Type[]]@($T_Input)).Invoke($null, @($stream))
+    $ms = New-Object System.IO.MemoryStream
+    $net.CopyTo($ms)
+    $bytes = $ms.ToArray()
+    if ($bytes.Length -eq 0) { $script:CoverError = 'empty'; return '' }
+    $mime = ''
+    try { $mime = "$($T_ContentType.GetProperty('ContentType').GetValue($stream))" } catch { }
+    if ($mime -notmatch '^image/') {
+      # Sniff the common formats instead of guessing.
+      if ($bytes[0] -eq 0x89 -and $bytes[1] -eq 0x50) { $mime = 'image/png' }
+      elseif ($bytes[0] -eq 0x52 -and $bytes[1] -eq 0x49) { $mime = 'image/webp' }
+      else { $mime = 'image/jpeg' }
+    }
     return "data:$mime;base64,$([Convert]::ToBase64String($bytes))"
   } catch {
-    $script:CoverError = "open: $($_.Exception.Message)"
+    $script:CoverError = "read: $($_.Exception.Message)"
     return ''
   } finally {
-    if ($null -ne $stream) { try { $stream.Dispose() } catch { } }
+    if ($null -ne $stream) { try { [System.IDisposable].GetMethod('Dispose').Invoke($stream, $null) } catch { } }
   }
 }
 
