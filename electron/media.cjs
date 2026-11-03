@@ -60,6 +60,9 @@ function applyWinMessage(state, msg) {
     canPlayPause: !!msg.canPlayPause, canNext: !!msg.canNext, canPrev: !!msg.canPrev,
   };
   next.coverError = coverReason(msg.coverError);
+  // PowerShell turns a function result into an array when a stray value slips into its
+  // output; take the cover string out of it instead of dropping it.
+  if (Array.isArray(msg.cover)) msg = { ...msg, cover: msg.cover.find((c) => typeof c === 'string') || '' };
   if (typeof msg.cover === 'string') next.cover = /^data:image\/[\w.+-]+;base64,/.test(msg.cover) ? msg.cover : '';
   if (status === 'none') next.cover = '';
   return next;

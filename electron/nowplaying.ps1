@@ -93,7 +93,7 @@ function Read-Cover($props) {
     $script:CoverError = "read: $($_.Exception.Message)"
     return ''
   } finally {
-    if ($null -ne $stream) { try { [System.IDisposable].GetMethod('Dispose').Invoke($stream, $null) } catch { } }
+    if ($null -ne $stream) { try { $null = [System.IDisposable].GetMethod('Dispose').Invoke($stream, $null) } catch { } }
   }
 }
 

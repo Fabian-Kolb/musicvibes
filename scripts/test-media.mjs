@@ -143,6 +143,8 @@ await check('Windows messages: state, cover kept until a new one comes, errors',
   assert.equal(s.cover, 'data:image/jpeg;base64,AAAA', 'cover dropped without a new one');
   s = applyWinMessage(s, { t: 'state', status: 'Playing', title: 'X', cover: 'javascript:alert(1)' });
   assert.equal(s.cover, '', 'only image data URLs pass');
+  s = applyWinMessage(s, { t: 'state', status: 'Playing', title: 'Y', cover: ['data:image/png;base64,BBBB', null] });
+  assert.equal(s.cover, 'data:image/png;base64,BBBB', 'cover in an array from PowerShell');
   s = applyWinMessage(s, { t: 'state', status: 'none' });
   assert.equal(s.status, 'none');
   assert.equal(s.app, '');
