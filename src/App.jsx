@@ -49,10 +49,10 @@ function Hud({ s }) {
       </div>
       {s.showHud && (
         <div className="meters">
-          <Meter label="Bass" value={live.bass} />
-          <Meter label="Mitte" value={live.mid} />
-          <Meter label="Höhen" value={live.high} />
-          <Meter label="Drive" value={live.drive} />
+          <Meter label="Bass" band="bass" />
+          <Meter label="Mitte" band="mid" />
+          <Meter label="Höhen" band="high" />
+          <Meter label="Drive" band="drive" />
         </div>
       )}
     </div>

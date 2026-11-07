@@ -61,7 +61,7 @@ Pro Bild liest die App das Spektrum des Desktop-Tons zweimal: lang (FFT mit 4096
 | Mitten | 500 Hz bis 4 kHz | Gesang, Melodie, Snare | Formen verbiegen sich, Farben fließen schneller |
 | Höhen | 5 bis 16 kHz | Hi-Hats, Becken, S-Laute | Feines Funkeln in den Farben |
 
-Gemessen wird die Leistung im Band. Jedes Band hat seine eigene automatische Aussteuerung, deshalb hebt der einsetzende Bass die Mitten und Höhen nicht mit an. Ein Band, das im Song kaum vorkommt (Bass in einem A-cappella-Intro), bleibt unten, statt hochverstärkt zu werden. Schläge (Kick, Snare, Hi-Hat) erkennt die App am spektralen Fluss: wie stark die Frequenzen eines Bandes gegenüber dem Moment davor ansteigen. Ein Drop zählt nur, wenn Bass und Kick nach einem Breakdown von ein paar Sekunden zurückkommen.
+Die Pegelanzeige und das Bild nutzen eine schnelle Fassung jedes Bandes: zwischen den leisen und den lauten Momenten der letzten Sekunden, aus der kurzen Analyse, 60-mal pro Sekunde aktualisiert. So schlägt der Bass bei jedem Kick aus und die Höhen bei jeder Hi-Hat. Gemessen wird die Leistung im Band. Jedes Band hat seine eigene automatische Aussteuerung, deshalb hebt der einsetzende Bass die Mitten und Höhen nicht mit an. Ein Band, das im Song kaum vorkommt (Bass in einem A-cappella-Intro), bleibt unten, statt hochverstärkt zu werden. Schläge (Kick, Snare, Hi-Hat) erkennt die App am spektralen Fluss: wie stark die Frequenzen eines Bandes gegenüber dem Moment davor ansteigen. Ein Drop zählt nur, wenn Bass und Kick nach einem Breakdown von ein paar Sekunden zurückkommen.
 
 ## Licht (Govee)
 

@@ -23,6 +23,11 @@ export class CaptureError extends Error {
 
 function audioOnly(stream) {
   stream.getVideoTracks().forEach((t) => { t.stop(); stream.removeTrack(t); });
+  // Chrome may run voice processing on captured sound: automatic gain flattens the
+  // music's dynamics and every stage adds delay. Switched off where the platform lets
+  // us (asking for it up front made the Linux loopback refuse to start, so it is done
+  // afterwards and failures are ignored).
+  if (!isLinux) stream.getAudioTracks().forEach((t) => { t.applyConstraints?.(RAW_AUDIO).catch(() => {}); });
   return stream;
 }
 

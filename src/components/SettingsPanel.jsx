@@ -229,9 +229,9 @@ function LevelControl() {
     <div className="field">
       <div className={`level level-${state}`}><span className="dot" />{text}</div>
       <div className="meters small">
-        <Meter label="Bass" value={live.bass} />
-        <Meter label="Mitte" value={live.mid} />
-        <Meter label="Höhen" value={live.high} />
+        <Meter label="Bass" band="bass" />
+        <Meter label="Mitte" band="mid" />
+        <Meter label="Höhen" band="high" />
       </div>
     </div>
   );

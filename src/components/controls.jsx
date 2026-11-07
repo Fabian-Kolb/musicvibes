@@ -1,4 +1,5 @@
-import { useId } from 'react';
+import { useEffect, useId, useRef } from 'react';
+import { registerMeter } from '../state/meters';
 
 // Small form controls shared by the dock and the settings panel.
 
@@ -73,12 +74,16 @@ export function ColorField({ label, value, onChange }) {
   );
 }
 
-export function Meter({ label, value }) {
+// band set: the bar is driven every frame by the render loop (see state/meters.js).
+export function Meter({ label, value = 0, band }) {
+  const bar = useRef(null);
+  const num = useRef(null);
+  useEffect(() => (band ? registerMeter({ band, bar: bar.current, num: num.current }) : undefined), [band]);
   return (
     <>
       <span>{label}</span>
-      <i style={{ '--v': Math.max(0, Math.min(1, value)).toFixed(3) }} />
-      <em>{Math.round(value * 100)}</em>
+      <i ref={bar} style={band ? undefined : { '--v': Math.max(0, Math.min(1, value)).toFixed(3) }} />
+      <em ref={num}>{band ? '0' : Math.round(value * 100)}</em>
     </>
   );
 }

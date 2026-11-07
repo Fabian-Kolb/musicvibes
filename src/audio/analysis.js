@@ -71,19 +71,32 @@ export function analyse(A, spectrum, dt, fast = null) {
     if (db > peak) peak = db;
   }
 
-  const out = { total: 10 * Math.log10(total + 1e-30), bass: 0, mid: 0, high: 0, flux: { bass: 0, mid: 0, high: 0 } };
-  for (const k of ['bass', 'mid', 'high']) {
-    let sum = 0;
-    for (const [a, z] of A.bands[k]) {
-      let s = 0;
-      for (let i = a; i <= z; i++) s += A.power[i];
-      sum += 10 * Math.log10(s / (z - a + 1) + 1e-30);
+  const out = { total: 10 * Math.log10(total + 1e-30), bass: 0, mid: 0, high: 0, flux: { bass: 0, mid: 0, high: 0 }, quick: null };
+  for (const k of ['bass', 'mid', 'high']) out[k] = bandLevel(A, k);
+  // Quick levels for the meters and the picture: mids and highs from the short window
+  // (half the delay); the bass stays on the long one so a voice does not leak into it.
+  if (fast) {
+    const [flo, fhi] = fast.A.top;
+    for (let i = flo; i <= fhi; i++) {
+      const db = fast.spectrum[i] > DB_FLOOR ? fast.spectrum[i] : DB_FLOOR;
+      fast.A.power[i] = Math.pow(10, db / 10);
     }
-    out[k] = sum / A.bands[k].length;
+    out.quick = [bandLevel(fast.A, 'bass'), bandLevel(fast.A, 'mid'), bandLevel(fast.A, 'high')];
   }
 
   out.flux = fast ? fluxOf(fast.A, fast.spectrum, dt) : fluxOf(A, spectrum, dt, peak);
   return out;
+}
+
+// Band level in dB: mean power per bin, averaged in dB over the band's parts.
+function bandLevel(A, k) {
+  let sum = 0;
+  for (const [a, z] of A.bands[k]) {
+    let s = 0;
+    for (let i = a; i <= z; i++) s += A.power[i];
+    sum += 10 * Math.log10(s / (z - a + 1) + 1e-30);
+  }
+  return sum / A.bands[k].length;
 }
 
 // Spectral flux: rise of each bin over an exponentially smoothed recent past.

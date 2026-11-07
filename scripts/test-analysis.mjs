@@ -29,7 +29,7 @@ function play(sections, opts = {}) {
     an.getFloatFrequencyData(spec, pcm, end);
     fan.getFloatFrequencyData(fast.spectrum, pcm, end);
     updateEngine(E, analyse(A, spec, DT, fast), DT, o);
-    rows.push({ t: end / SR, bass: E.bass, mid: E.mid, high: E.high, kick: E.kickEvent, hat: E.hatEvent, drop: E.dropEvent, silent: E.silent });
+    rows.push({ t: end / SR, meter: [...E.meter], bass: E.bass, mid: E.mid, high: E.high, kick: E.kickEvent, hat: E.hatEvent, drop: E.dropEvent, silent: E.silent });
   }
   const sec = marks.map((m) => {
     // Skip the first second of each section: the meters need a moment to follow.
@@ -39,7 +39,7 @@ function play(sections, opts = {}) {
     return { name: m.name, start: m.start, bass: mean('bass'), mid: mean('mid'), high: mean('high'),
       kicks: rate('kick'), hats: rate('hat'), silent: r.filter((x) => x.silent).length > r.length * 0.8 };
   });
-  return { sec, drops: rows.filter((r) => r.drop).map((r) => r.t), kicks: rows.filter((r) => r.kick).map((r) => r.t), E };
+  return { sec, drops: rows.filter((r) => r.drop).map((r) => r.t), kicks: rows.filter((r) => r.kick).map((r) => r.t), rows, E };
 }
 const fmt = (s) => `${s.name}: bass ${s.bass.toFixed(2)} mid ${s.mid.toFixed(2)} high ${s.high.toFixed(2)} kicks ${s.kicks.toFixed(1)}/s hats ${s.hats.toFixed(1)}/s`;
 const show = (r) => r.sec.map(fmt).join('\n     ');
@@ -138,6 +138,38 @@ check('Kicks are seen fast: every kick of a groove, on average within 35 ms', ()
   }
   const mean = delays.reduce((a, b) => a + b, 0) / delays.length;
   assert.ok(mean <= 0.035, `kicks seen after ${Math.round(mean * 1000)} ms on average`);
+});
+
+const pct = (v, q) => { const a = [...v].sort((x, y) => x - y); return a[Math.floor(q * (a.length - 1))]; };
+
+check('Meters swing with the music: kicks and hi-hats move them over most of the scale', () => {
+  const bpm = 120;
+  const { rows } = play([{ name: 'groove', secs: 12, parts: [voice(), pad(), bass({ bpm }), kick({ bpm }), hats({ bpm })] }]);
+  const r = rows.filter((x) => x.t > 4);
+  ['Bass', 'Mitte', 'Höhen'].forEach((name, i) => {
+    const lo = pct(r.map((x) => x.meter[i]), 0.1), hi = pct(r.map((x) => x.meter[i]), 0.9);
+    assert.ok(hi > 0.85 && hi - lo > 0.4, `${name} meter only moves between ${lo.toFixed(2)} and ${hi.toFixed(2)}`);
+  });
+});
+
+check('Bass meter follows a kick within 45 ms (half way up)', () => {
+  const bpm = 120, beat = 60 / bpm;
+  const { rows } = play([{ name: 'groove', secs: 12, parts: [pad(), bass({ bpm }), kick({ bpm })] }]);
+  const delays = [];
+  for (let k = 8; k < 22; k++) {
+    const w = rows.filter((x) => x.t >= k * beat && x.t < (k + 0.9) * beat);
+    const v = w.map((x) => x.meter[0]);
+    const lo = v[0], hi = Math.max(...v);
+    delays.push(w[v.findIndex((x) => x >= lo + (hi - lo) / 2)].t - k * beat);
+  }
+  const mean = delays.reduce((a, b) => a + b, 0) / delays.length;
+  assert.ok(mean <= 0.045, `half way after ${Math.round(mean * 1000)} ms`);
+});
+
+check('A voice alone does not fill the bass meter', () => {
+  const { rows } = play([{ name: 'voice', secs: 8, parts: [voice({ f0: 110 }), pad()] }]);
+  const m = rows.filter((x) => x.t > 2).map((x) => x.meter[0]);
+  assert.ok(pct(m, 0.9) < 0.2, `bass meter at ${pct(m, 0.9).toFixed(2)} with only a voice`);
 });
 
 finish('analysis');

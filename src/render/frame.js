@@ -66,18 +66,18 @@ export function computeFrame(E, V, S, dt, env = {}) {
   // - Mids (voice, melody, snare): the shapes bend and the colours flow faster.
   // - Highs (hi-hats, cymbals): a fine twinkle inside the colours, plus the gloss in Glas.
   const flowSpeed = (0.05 + 0.3 * d + (0.15 * E.eFast * r + 0.55 * E.punch * d * r) * S.peakSpeed
-    + 0.3 * E.mid * r * mi * S.peakSpeed
+    + 0.3 * E.meter[1] * r * mi * S.peakSpeed
     + (dropping && S.dropBoost ? 0.2 : 0)) * S.speed * motion;
   V.flow += flowSpeed * dt;
 
   const zoomBase = (1.05 + 0.75 * d) / S.size;
-  const zoomTarget = zoomBase * Math.max(0.3, 1 - 0.3 * E.bass * r * bi) * Math.max(0.3, 1 - 0.12 * E.punch * r * bp);
+  const zoomTarget = zoomBase * Math.max(0.3, 1 - 0.3 * E.meter[0] * r * bi) * Math.max(0.3, 1 - 0.12 * E.punch * r * bp);
   // Fast toward a hit (the picture jumps with the kick), slow back out of it.
   V.zoom = ema(V.zoom, zoomTarget, dt, zoomTarget < V.zoom ? 0.025 : 0.15);
-  V.warp = ema(V.warp, (0.35 + 0.6 * E.mid * r * mi + 0.35 * E.snap * r * mi + 0.4 * d) * S.form, dt, E.snap > 0.3 ? 0.08 : 0.4);
+  V.warp = ema(V.warp, (0.35 + 0.6 * E.meter[1] * r * mi + 0.35 * E.snap * r * mi + 0.4 * d) * S.form, dt, E.snap > 0.3 ? 0.08 : 0.4);
   V.sharp = ema(V.sharp, 3.2 + 3.0 * d, dt, 1.5);
   // Minimal: bass makes the colour clouds swell, each kick gives a short push.
-  const sizeTarget = (0.17 + 0.09 * E.bass * r * bi + 0.05 * E.punch * r * bp) * S.size;
+  const sizeTarget = (0.17 + 0.09 * E.meter[0] * r * bi + 0.05 * E.punch * r * bp) * S.size;
   V.size = ema(V.size, sizeTarget, dt, sizeTarget > V.size ? 0.02 : 0.09);
 
   // Hue: up to 0.3 the palette only sways around itself; above that it slowly
@@ -111,8 +111,8 @@ export function computeFrame(E, V, S, dt, env = {}) {
   P.zoom = V.zoom;
   P.warp = V.warp;
   P.sharp = V.sharp;
-  P.glass = S.glass * (0.75 + 0.5 * E.high * hi);
-  P.shimmer = clamp((0.6 * E.high * E.high + 0.6 * E.sparkle) * (0.5 + 0.5 * d) * r * hi, 0, 1.5);
+  P.glass = S.glass * (0.75 + 0.5 * E.meter[2] * hi);
+  P.shimmer = clamp((0.6 * E.meter[2] * E.meter[2] + 0.6 * E.sparkle) * (0.5 + 0.5 * d) * r * hi, 0, 1.5);
   // Glints (Minimal, Flächen): each hi-hat lights a new set of points.
   if (E.hatEvent) {
     V.glintPrevId = V.glintId; V.glintPrevT = V.glintT;
@@ -122,8 +122,8 @@ export function computeFrame(E, V, S, dt, env = {}) {
   P.glintAge = E.now - V.glintT;
   P.glintPrevId = V.glintPrevId;
   P.glintPrevAge = E.now - V.glintPrevT;
-  P.glintAmt = clamp((0.7 + 0.5 * E.high) * (0.6 + 0.4 * d) * r * hi, 0, 1.6);
-  P.twinkle = clamp(0.9 * E.high * E.high * r * hi, 0, 1.2);
+  P.glintAmt = clamp((0.7 + 0.5 * E.meter[2]) * (0.6 + 0.4 * d) * r * hi, 0, 1.6);
+  P.twinkle = clamp(0.9 * E.meter[2] * E.meter[2] * r * hi, 0, 1.2);
   P.depth = 0.3 - 0.2 * d;
   P.hue = V.hue + V.hueCycle + (S.hueShift * Math.PI) / 180;
   P.ripAge = E.now - E.kickT;

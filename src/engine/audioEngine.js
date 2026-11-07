@@ -3,7 +3,11 @@
 //
 // Per band (bass, mid, high), three things, the way VJ tools such as Synesthesia
 // split them up:
-// - Level (E.bass, E.mid, E.high): how strong the band is right now, 0..1.
+// - Level (E.bass, E.mid, E.high): how strong the band is right now, 0..1, smooth.
+//   Drops, drive and the lights work with it.
+// - Meter (E.meter[0..2]): the same band, but fast and with the full swing of the
+//   music: 0 at the band's recent quiet moments, 1 at its loud ones. The picture and
+//   the meters on screen follow it, so every kick and every hi-hat is visible.
 // - Hits (E.kickEvent, E.snareEvent, E.hatEvent): short transients in that band.
 // - Rate (E.kickRate, E.snareRate, E.hatRate): how many hits per second.
 // On top of that:
@@ -46,6 +50,11 @@ const TYPICAL_SHARE = [-13, -40, -52];
 // hiss just above the floor is not blown up to full scale.
 const FLOOR_MARGIN = 15;
 const ATTACK = 0.15; // seconds for a ceiling to rise to a louder level
+// Meter: the floor follows the quiet moments, but never comes closer to the ceiling
+// than MIN_SPAN dB, so a band that stays loud stays high instead of sinking to zero.
+const MIN_SPAN = 9;
+const METER_ATTACK = [0.012, 0.02, 0.008]; // seconds, bass mid high
+const METER_RELEASE = [0.09, 0.12, 0.07];
 
 function onsetDetector() {
   return { avg: 0, armed: true, last: -10, times: [], ref: null };
@@ -57,6 +66,7 @@ export function createEngine() {
     ceil: [null, null, null], gCeil: null,
     level: [0, 0, 0],
     held: [0, 0, 0], // each band's level held for a moment, for the hit gate
+    meter: [0, 0, 0], mCeil: [null, null, null], mFloor: [null, null, null],
     bass: 0, mid: 0, high: 0,
     kick: onsetDetector(), snare: onsetDetector(), hat: onsetDetector(),
     kickRate: 0, snareRate: 0, hatRate: 0,
@@ -73,6 +83,8 @@ export function createEngine() {
 export function resetEngine(E) {
   E.ceil = [null, null, null];
   E.gCeil = null;
+  E.mCeil = [null, null, null];
+  E.mFloor = [null, null, null];
   E.warm = 0;
   E.dropHold = 0;
   E.cooldown = 0;
@@ -127,6 +139,25 @@ export function updateEngine(E, raw, dt, options = DEFAULT_ENGINE_OPTIONS) {
     E.level[i] = clamp(1 - (top - vals[i]) / o.range) * fade;
   }
   const sm = o.smoothing;
+  // Held level: the hit gate below and the meters' presence check use it.
+  for (let i = 0; i < 3; i++) E.held[i] = quiet ? 0 : Math.max(E.level[i], E.held[i] - dt / 0.5);
+
+  // Meters: the band between its recent quiet floor and its ceiling. Absent bands
+  // (held level low) stay low, so a voice alone does not fill the bass meter.
+  const q = raw.quick || vals;
+  for (let i = 0; i < 3; i++) {
+    let target = 0;
+    if (!quiet) {
+      E.mCeil[i] = ceiling(E.mCeil[i], q[i], dt, fall);
+      const f = E.mFloor[i];
+      E.mFloor[i] = f === null ? q[i] - MIN_SPAN : ema(f, q[i], dt, q[i] < f ? 0.015 : 1.5);
+      const top = E.mCeil[i] - gainDb;
+      const bottom = clamp(E.mFloor[i], top - o.range, top - MIN_SPAN);
+      target = clamp((q[i] - bottom) / (top - bottom)) * clamp(E.held[i] / 0.5) * fade;
+    }
+    E.meter[i] = follow(E.meter[i], target, dt, METER_ATTACK[i] * sm, METER_RELEASE[i] * sm);
+  }
+
   E.bass = follow(E.bass, E.level[0], dt, 0.03 * sm, 0.2 * sm);
   E.mid = follow(E.mid, E.level[1], dt, 0.06 * sm, 0.35 * sm);
   E.high = follow(E.high, E.level[2], dt, 0.02 * sm, 0.18 * sm);
@@ -148,7 +179,6 @@ export function updateEngine(E, raw, dt, options = DEFAULT_ENGINE_OPTIONS) {
   // rising out of nothing is not a kick. The level is held for half a second, so in a
   // running beat the gate is already open when the next kick's onset arrives (the
   // onsets come from the faster analyser; the levels would still be catching up).
-  for (let i = 0; i < 3; i++) E.held[i] = quiet ? 0 : Math.max(E.level[i], E.held[i] - dt / 0.5);
   const ks = Math.max(0.2, o.kickSensitivity);
   const present = (i) => (quiet ? 0 : clamp((E.held[i] - 0.4) / 0.25));
   const kick = onset(E, E.kick, flux.bass * present(0), dt, { minGap: 0.2, minFlux: 1.5 / ks, ratio: 2.2 / ks });

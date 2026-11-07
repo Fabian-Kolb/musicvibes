@@ -5,6 +5,7 @@ import { computeFrame, createVisualState } from '../render/frame';
 import { read, sourceVersion } from '../audio/controller';
 import { SILENT_FRAME } from '../audio/analysis';
 import { settingsStore, liveStore, lightStore } from '../state/store';
+import { pushMeters } from '../state/meters';
 import { createLightState, computeLights } from '../lights/lightSync';
 import { desktopBridge } from '../audio/capture';
 import { PALETTES } from '../state/palettes';
@@ -61,6 +62,7 @@ export default function Visualizer() {
     let hudT = 0, frames = 0, fpsT = 0, fps = 0;
     let section = '';
     const L = createLightState();
+    const meterValues = { bass: 0, mid: 0, high: 0, drive: 0 };
     let lightKey = '', lightSent = 0;
 
     // Govee lights: start or stop the stream when the chosen lights change, then send
@@ -147,6 +149,9 @@ export default function Visualizer() {
       renderer.resize(scale);
       renderer.render(P);
 
+      meterValues.bass = E.meter[0]; meterValues.mid = E.meter[1]; meterValues.high = E.meter[2]; meterValues.drive = E.drive;
+      pushMeters(meterValues);
+
       frames += 1;
       fpsT += dt;
       if (fpsT >= 0.5) { fps = Math.round(frames / fpsT); frames = 0; fpsT = 0; }
@@ -154,7 +159,7 @@ export default function Visualizer() {
       if (hudT > 0.1) {
         hudT = 0;
         liveStore.set({
-          bass: E.bass, mid: E.mid, high: E.high, drive: E.drive, mood: moodOf(E.drive),
+          bass: E.meter[0], mid: E.meter[1], high: E.meter[2], drive: E.drive, mood: moodOf(E.drive),
           drop: S.dropDetection && E.dropHold > 0, silent: E.silent, fps, section, scale,
         });
       }
