@@ -20,7 +20,7 @@ export function createVisualState() {
     P: {
       flow: 0, zoom: 1, warp: 0.5, sharp: 4, glass: 0, shimmer: 0, depth: 0.3, hue: 0, ripAge: 10, ripAmp: 0,
       sat: 1, style: 1, size: 0.2, count: 6, bg: new Float32Array(3), sym: 0, symN: 6, symRot: 0,
-      colors: null, trail: 0, fbZoom: 1, fbRot: 0, bright: 1, flash: 0, vignette: 0.35, flashCol: WHITE,
+      colors: null, trail: 0, trailUp: 0, fbZoom: 1, fbRot: 0, bright: 1, flash: 0, vignette: 0.35, flashCol: WHITE,
       glintId: 0, glintAge: 10, glintPrevId: 0, glintPrevAge: 10, glintAmt: 0, twinkle: 0,
     },
   };
@@ -73,12 +73,12 @@ export function computeFrame(E, V, S, dt, env = {}) {
   const zoomBase = (1.05 + 0.75 * d) / S.size;
   const zoomTarget = zoomBase * Math.max(0.3, 1 - 0.3 * E.meter[0] * r * bi) * Math.max(0.3, 1 - 0.12 * E.punch * r * bp);
   // Fast toward a hit (the picture jumps with the kick), slow back out of it.
-  V.zoom = ema(V.zoom, zoomTarget, dt, zoomTarget < V.zoom ? 0.025 : 0.15);
+  V.zoom = ema(V.zoom, zoomTarget, dt, zoomTarget < V.zoom ? 0.01 : 0.15);
   V.warp = ema(V.warp, (0.35 + 0.6 * E.meter[1] * r * mi + 0.35 * E.snap * r * mi + 0.4 * d) * S.form, dt, E.snap > 0.3 ? 0.08 : 0.4);
   V.sharp = ema(V.sharp, 3.2 + 3.0 * d, dt, 1.5);
   // Minimal: bass makes the colour clouds swell, each kick gives a short push.
   const sizeTarget = (0.17 + 0.09 * E.meter[0] * r * bi + 0.05 * E.punch * r * bp) * S.size;
-  V.size = ema(V.size, sizeTarget, dt, sizeTarget > V.size ? 0.02 : 0.09);
+  V.size = ema(V.size, sizeTarget, dt, sizeTarget > V.size ? 0.008 : 0.09);
 
   // Hue: up to 0.3 the palette only sways around itself; above that it slowly
   // travels round the colour wheel. A drop swings it for a few seconds.
@@ -102,10 +102,19 @@ export function computeFrame(E, V, S, dt, env = {}) {
 
   V.symRot = (V.symRot + dt * S.symmetrySpin * 0.5 * (0.6 + 0.8 * d)) % TAU;
 
-  // Trails, corrected for frame rate so 144 Hz and 60 Hz look alike.
+  // Trails as an afterglow: what gets darker fades out over the next frames, what gets
+  // brighter shows at once. A plain blend with the last frame would hold back every
+  // kick by a few frames (in Glas about 35 ms), which is what made Schlieren feel late.
+  // Corrected for frame rate so 144 Hz and 60 Hz look alike.
   let trail = clamp((glassy ? 0.72 - 0.4 * d : 0.55 - 0.3 * d) * S.trails, 0, 0.9);
   trail = Math.pow(trail, per60);
-  if (V.styleBlend > 0) trail = Math.max(trail, Math.exp(-dt / Math.max(0.02, 0.5 * S.transition * V.styleBlend)));
+  let trailUp = 0;
+  if (V.styleBlend > 0) {
+    // Style switch: the old picture melts into the new one both ways.
+    const melt = Math.exp(-dt / Math.max(0.02, 0.5 * S.transition * V.styleBlend));
+    trail = Math.max(trail, melt);
+    trailUp = melt;
+  }
 
   P.flow = V.flow;
   P.zoom = V.zoom;
@@ -140,6 +149,7 @@ export function computeFrame(E, V, S, dt, env = {}) {
   P.symRot = V.symRot;
   P.colors = V.colors;
   P.trail = trail;
+  P.trailUp = trailUp;
   P.fbZoom = glassy ? Math.pow(1.003 + 0.035 * E.punch * r * bp + (dropping ? 0.01 : 0), per60) : 1;
   P.fbRot = glassy ? (0.004 * Math.sin(V.flow * 0.35) + (dropping ? 0.012 : 0)) * per60 : 0;
   P.bright = (0.88 + 0.3 * E.punch * r * bp + (dropping ? 0.08 : 0)) * S.brightness;
@@ -148,3 +158,7 @@ export function computeFrame(E, V, S, dt, env = {}) {
   P.flashCol = S.strobeColor === 'palette' ? V.colors.subarray(V.flashIdx * 3, V.flashIdx * 3 + 3) : WHITE;
   return P;
 }
+
+// The shader's trail blend for one colour channel (end of main() in shaders.js), so
+// the tests and the latency measurement can follow a pixel through the trails.
+export const trailBlend = (cur, prev, P) => cur + (prev - cur) * (prev >= cur ? P.trail : P.trailUp);

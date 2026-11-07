@@ -34,7 +34,7 @@ export const DEFAULT_ENGINE_OPTIONS = {
   gain: 1, // >1 fills the meters sooner
   floor: -70, // dB: overall level below which the input counts as silence
   range: 24, // dB between a band's ceiling and an empty meter
-  smoothing: 1, // >1 slower, <1 snappier band followers
+  smoothing: 1, // >1 slower, <1 snappier band followers; the meters only fall slower
   kickSensitivity: 1, // >1 detects softer kicks
   dropSensitivity: 1, // >1 detects smaller drops
   dropDetection: true,
@@ -53,7 +53,7 @@ const ATTACK = 0.15; // seconds for a ceiling to rise to a louder level
 // Meter: the floor follows the quiet moments, but never comes closer to the ceiling
 // than MIN_SPAN dB, so a band that stays loud stays high instead of sinking to zero.
 const MIN_SPAN = 9;
-const METER_ATTACK = [0.012, 0.02, 0.008]; // seconds, bass mid high
+const METER_ATTACK = [0.006, 0.01, 0.004]; // seconds, bass mid high
 const METER_RELEASE = [0.09, 0.12, 0.07];
 
 function onsetDetector() {
@@ -155,7 +155,8 @@ export function updateEngine(E, raw, dt, options = DEFAULT_ENGINE_OPTIONS) {
       const bottom = clamp(E.mFloor[i], top - o.range, top - MIN_SPAN);
       target = clamp((q[i] - bottom) / (top - bottom)) * clamp(E.held[i] / 0.5) * fade;
     }
-    E.meter[i] = follow(E.meter[i], target, dt, METER_ATTACK[i] * sm, METER_RELEASE[i] * sm);
+    // Glättung above 1 only slows the fall: a kick always comes through at once.
+    E.meter[i] = follow(E.meter[i], target, dt, METER_ATTACK[i] * Math.min(1, sm), METER_RELEASE[i] * sm);
   }
 
   E.bass = follow(E.bass, E.level[0], dt, 0.03 * sm, 0.2 * sm);

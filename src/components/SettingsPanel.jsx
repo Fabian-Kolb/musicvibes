@@ -29,7 +29,7 @@ const SECTIONS = [
       { key: 'count', label: 'Anzahl Farbwolken', min: 2, max: 8, step: 1, format: String, show: is('style', 'minimal') },
       { key: 'size', label: 'Größe', min: 0.5, max: 2, format: pct },
       { key: 'form', label: 'Verformung', min: 0, max: 2, format: pct, hint: 'Wie stark sich die Formen verbiegen und verwirbeln' },
-      { key: 'trails', label: 'Schlieren', min: 0, max: 1.2, format: pct, hint: 'Wie lange Farben nachziehen' },
+      { key: 'trails', label: 'Schlieren', min: 0, max: 1.2, format: pct, hint: 'Wie lange Farben nachleuchten. Neues erscheint trotzdem sofort' },
       { key: 'glass', label: 'Glanz', min: 0, max: 1, format: pct, show: is('style', 'glass') },
       { key: 'brightness', label: 'Helligkeit', min: 0.4, max: 1.6, format: pct, hint: 'Gilt für alle Szenen' },
       { key: 'saturation', label: 'Sättigung', min: 0, max: 1.8, format: pct },
@@ -58,7 +58,7 @@ const SECTIONS = [
       { key: 'bassImpact', label: 'Bass → Größe & Puls', min: 0, max: 2, format: pct, hint: 'Kick und Bassline lassen die Farben anschwellen' },
       { key: 'midImpact', label: 'Mitten → Form & Fluss', min: 0, max: 2, format: pct, hint: 'Gesang und Melodie verformen die Flächen und lassen sie schneller fließen' },
       { key: 'highImpact', label: 'Höhen → Funkeln', min: 0, max: 2, format: pct, hint: 'Hi-Hats und Becken lassen die Farben funkeln' },
-      { key: 'smoothing', label: 'Glättung', min: 0.4, max: 2.5, format: times, hint: 'Links reagiert das Bild zackig, rechts weich' },
+      { key: 'smoothing', label: 'Glättung', min: 0.4, max: 2.5, format: times, hint: 'Rechts klingt das Bild nach jedem Schlag weicher aus, der Schlag selbst kommt immer sofort' },
     ],
   },
   {

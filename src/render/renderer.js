@@ -93,6 +93,7 @@ export function createRenderer(canvas) {
     gl.uniform1i(U.uPrev, 0);
     gl.uniform2f(U.uRes, W, H);
     gl.uniform1f(U.uTrail, p.trail);
+    gl.uniform1f(U.uTrailUp, p.trailUp);
     gl.uniform1f(U.uFbZoom, p.fbZoom);
     gl.uniform1f(U.uFbRot, p.fbRot);
     gl.uniform1f(U.uT, p.flow);

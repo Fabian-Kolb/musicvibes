@@ -22,9 +22,11 @@ uniform float uGlintAmt, uTwinkle;
 // Symmetry: 0 off, 1 mirror, 2 four-way, 3 kaleidoscope with uSymN segments.
 uniform float uSym, uSymN, uSymRot;
 // Feedback (MilkDrop technique): the previous frame, pushed outward and turned
-// slightly, is blended under the new one, so colours leave trails.
+// slightly, is blended under the new one, so colours leave trails. Only where the
+// picture gets darker (uTrail); where it gets brighter it shows at once (uTrailUp is
+// 0 except while a style switch melts the old picture away).
 uniform sampler2D uPrev;
-uniform float uTrail, uFbZoom, uFbRot;
+uniform float uTrail, uTrailUp, uFbZoom, uFbRot;
 
 vec3 permute(vec3 x) { return mod(((x * 34.0) + 1.0) * x, 289.0); }
 float snoise(vec2 v) {
@@ -252,7 +254,7 @@ void main() {
   c += jit;
   c.x /= uRes.x / uRes.y;
   vec3 prev = texture(uPrev, c + 0.5).rgb;
-  col = mix(col, prev, uTrail);
+  col = mix(col, prev, mix(vec3(uTrailUp), vec3(uTrail), step(col, prev)));
   // Glints take the colour they sit on, brightened toward white.
   col += mix(col * 1.5 + 0.08, vec3(1.0), 0.6) * glint;
   o = vec4(col, 1.0);
@@ -280,5 +282,5 @@ void main() {
 
 export const UNIFORMS = ['uRes', 'uT', 'uZoom', 'uWarp', 'uSharp', 'uGlass', 'uShimmer', 'uDepth', 'uHue',
   'uRipAge', 'uRipAmp', 'uSat', 'uCol', 'uStyle', 'uSize', 'uCount', 'uBg', 'uSym', 'uSymN', 'uSymRot',
-  'uPrev', 'uTrail', 'uFbZoom', 'uFbRot', 'uGlint', 'uGlintAmt', 'uTwinkle'];
+  'uPrev', 'uTrail', 'uTrailUp', 'uFbZoom', 'uFbRot', 'uGlint', 'uGlintAmt', 'uTwinkle'];
 export const PRESENT_UNIFORMS = ['uImg', 'uRes', 'uBright', 'uFlash', 'uVignette', 'uFlashCol'];

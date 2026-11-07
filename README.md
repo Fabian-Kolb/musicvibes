@@ -63,6 +63,8 @@ Pro Bild liest die App das Spektrum des Desktop-Tons zweimal: lang (FFT mit 4096
 
 Die Pegelanzeige und das Bild nutzen eine schnelle Fassung jedes Bandes: zwischen den leisen und den lauten Momenten der letzten Sekunden, aus der kurzen Analyse, 60-mal pro Sekunde aktualisiert. So schlägt der Bass bei jedem Kick aus und die Höhen bei jeder Hi-Hat. Gemessen wird die Leistung im Band. Jedes Band hat seine eigene automatische Aussteuerung, deshalb hebt der einsetzende Bass die Mitten und Höhen nicht mit an. Ein Band, das im Song kaum vorkommt (Bass in einem A-cappella-Intro), bleibt unten, statt hochverstärkt zu werden. Schläge (Kick, Snare, Hi-Hat) erkennt die App am spektralen Fluss: wie stark die Frequenzen eines Bandes gegenüber dem Moment davor ansteigen. Ein Drop zählt nur, wenn Bass und Kick nach einem Breakdown von ein paar Sekunden zurückkommen.
 
+Damit der Bass in jedem Stil auf dem Beat sitzt, bremsen die Regler den Anstieg nicht: Schlieren sind ein Nachleuchten (was heller wird, erscheint sofort, nur das Ausklingen zieht nach), und „Glättung“ macht nur das Ausklingen weicher. Vom Kick im Ton bis das Bild halb ausgeschlagen hat, vergehen so in der Simulation in allen Stilen 35 bis 45 ms; dazu kommen Windows-Aufnahme und Bildschirm.
+
 ## Licht (Govee)
 
 In der Desktop-App können Govee-Lichter im WLAN mitleuchten (Einstellungen → Licht). Die App spricht die Lichter direkt im Heimnetz an (Govee LAN API, UDP), ohne Cloud und ohne API-Schlüssel.

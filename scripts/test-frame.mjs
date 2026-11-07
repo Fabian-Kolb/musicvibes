@@ -6,7 +6,7 @@ import { check, finish } from './lib/check.mjs';
 import { createEngine, updateEngine, DEFAULT_ENGINE_OPTIONS } from '../src/engine/audioEngine.js';
 import { genreById, simulate } from '../src/engine/simulator.js';
 import { fromLinear } from '../src/audio/analysis.js';
-import { computeFrame, createVisualState } from '../src/render/frame.js';
+import { computeFrame, createVisualState, trailBlend } from '../src/render/frame.js';
 import { DEFAULTS, SCENE_KEYS, BUILTIN_SCENES, sceneValues, sanitize } from '../src/state/settings.js';
 
 const DT = 1 / 60;
@@ -70,6 +70,27 @@ check('Minimal and Flächen stay flat: no shockwave ring, no feedback zoom; Glas
   }
   const g = play({ style: 'glass' }, 'techno', 20);
   assert.ok(g.maxRip > 0 && g.maxZoomFb > 1.003);
+});
+
+check('Schlieren are an afterglow: what gets brighter shows at once, only the fall trails', () => {
+  for (const style of ['glass', 'minimal', 'flat']) {
+    const E = createEngine();
+    const V = createVisualState();
+    const S = { ...DEFAULTS, style, trails: 1.2 };
+    computeFrame(E, V, S, DT);
+    const P = computeFrame(E, V, S, DT);
+    assert.equal(P.trailUp, 0, style);
+    assert.equal(trailBlend(1, 0.2, P), 1, `${style}: a brightening pixel is held back`);
+    assert.ok(trailBlend(0.2, 1, P) > 0.5, `${style}: a darkening pixel should still trail`);
+  }
+});
+
+check('Style switch: the old picture still melts into the new one, both ways', () => {
+  const E = createEngine();
+  const V = createVisualState();
+  computeFrame(E, V, { ...DEFAULTS, style: 'minimal' }, DT);
+  const P = computeFrame(E, V, { ...DEFAULTS, style: 'glass', transition: 2 }, DT);
+  assert.ok(P.trailUp > 0.9 && P.trail > 0.9, `trail ${P.trail} up ${P.trailUp}`);
 });
 
 check('Palette change fades over the transition time instead of jumping', () => {

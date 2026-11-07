@@ -8,13 +8,15 @@ import { createAnalyser } from './lib/webaudio.mjs';
 import { SR, render, voice, pad, bass, kick, hats, snare, noise } from './lib/synth.mjs';
 import { createAnalysis, analyse } from '../src/audio/analysis.js';
 import { createEngine, updateEngine, DEFAULT_ENGINE_OPTIONS } from '../src/engine/audioEngine.js';
+import { createVisualState, computeFrame, trailBlend } from '../src/render/frame.js';
+import { DEFAULTS } from '../src/state/settings.js';
 
 const HOP = 800; // one analyser read per frame at 60 fps
 const DT = HOP / SR;
 
 // Plays sections through analyser, analysis and engine. Returns per-section means of
-// the meters and hit rates, plus drop times.
-function play(sections, opts = {}) {
+// the meters and hit rates, plus drop times. each(E) runs after every frame.
+function play(sections, opts = {}, each = null) {
   const { pcm, marks } = render(sections);
   const an = createAnalyser({ sampleRate: SR });
   const spec = new Float32Array(an.frequencyBinCount).fill(-Infinity);
@@ -29,6 +31,7 @@ function play(sections, opts = {}) {
     an.getFloatFrequencyData(spec, pcm, end);
     fan.getFloatFrequencyData(fast.spectrum, pcm, end);
     updateEngine(E, analyse(A, spec, DT, fast), DT, o);
+    if (each) each(E);
     rows.push({ t: end / SR, meter: [...E.meter], bass: E.bass, mid: E.mid, high: E.high, kick: E.kickEvent, hat: E.hatEvent, drop: E.dropEvent, silent: E.silent });
   }
   const sec = marks.map((m) => {
@@ -164,6 +167,34 @@ check('Bass meter follows a kick within 45 ms (half way up)', () => {
   }
   const mean = delays.reduce((a, b) => a + b, 0) / delays.length;
   assert.ok(mean <= 0.045, `half way after ${Math.round(mean * 1000)} ms`);
+});
+
+// On screen: a pixel that brightens with the bass (Glas: zoom, Minimal and Flächen: the
+// size of the clouds), followed through the trails as the shader blends them.
+check('The picture follows a kick within 45 ms in every style, also with Schlieren and Glättung turned up', () => {
+  const bpm = 120, beat = 60 / bpm;
+  const setups = [['Glas', { style: 'glass' }], ['Minimal', { style: 'minimal' }], ['Flächen', { style: 'flat' }],
+    ['Glas, Schlieren und Glättung voll', { style: 'glass', trails: 1.2, smoothing: 2.5 }]];
+  for (const [name, settings] of setups) {
+    const S = { ...DEFAULTS, ...settings };
+    const V = createVisualState();
+    const px = [];
+    let p = null;
+    play([{ name: 'groove', secs: 12, parts: [pad(), bass({ bpm }), kick({ bpm }), hats({ bpm })] }], { smoothing: S.smoothing }, (E) => {
+      const P = computeFrame(E, V, S, DT);
+      const bright = S.style === 'glass' ? -P.zoom : P.size;
+      p = p === null ? bright : trailBlend(bright, p, P);
+      px.push({ t: E.now, v: p });
+    });
+    const delays = [];
+    for (let k = 8; k < 22; k++) {
+      const w = px.filter((x) => x.t >= k * beat && x.t < (k + 0.9) * beat);
+      const lo = w[0].v, hi = Math.max(...w.map((x) => x.v));
+      delays.push(w[w.findIndex((x) => x.v >= lo + (hi - lo) / 2)].t - k * beat);
+    }
+    const mean = delays.reduce((a, b) => a + b, 0) / delays.length;
+    assert.ok(mean <= 0.045, `${name}: half way after ${Math.round(mean * 1000)} ms`);
+  }
 });
 
 check('A voice alone does not fill the bass meter', () => {
