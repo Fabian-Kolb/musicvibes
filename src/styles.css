@@ -52,6 +52,20 @@ button, input, select { font: inherit; color: inherit; }
   backdrop-filter: blur(14px);
 }
 .section { text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--ink-dim); }
+.beat-view {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--ink-faint);
+  padding: 4px 10px; border-radius: 999px; background: var(--glass); border: 1px solid var(--line); backdrop-filter: blur(14px);
+}
+.beat-view b { font-family: var(--mono); font-variant-numeric: tabular-nums; min-width: 3ch; text-align: right; }
+.beat-view.locked { color: var(--ink); }
+.beat-dots { display: inline-flex; gap: 4px; margin-left: 2px; }
+.beat-dots i { width: 6px; height: 6px; border-radius: 50%; background: rgba(242, 245, 255, 0.18); }
+.beat-dots i.one { width: 8px; height: 8px; }
+.beat-dots i.on { background: var(--accent); }
+.beat-dots i.one.on { background: var(--hot); }
+.beat-dots i.hit { animation: beat-hit 0.18s ease-out; }
+@keyframes beat-hit { from { transform: scale(1.6); } to { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .beat-dots i.hit { animation: none; } }
 .drop { font-size: 12px; font-weight: 800; letter-spacing: 0.14em; padding: 4px 10px; border-radius: 999px; color: #1a0016; background: var(--hot); }
 .meters {
   display: grid; grid-template-columns: auto 1fr auto; gap: 5px 10px; align-items: center;

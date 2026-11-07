@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef } from 'react';
-import { registerMeter } from '../state/meters';
+import { registerMeter, registerBeatView } from '../state/meters';
 
 // Small form controls shared by the dock and the settings panel.
 
@@ -85,5 +85,21 @@ export function Meter({ label, value = 0, band }) {
       <i ref={bar} style={band ? undefined : { '--v': Math.max(0, Math.min(1, value)).toFixed(3) }} />
       <em ref={num}>{band ? '0' : Math.round(value * 100)}</em>
     </>
+  );
+}
+
+// Tempo and beat of the bar, 1 to 4, filled in by the render loop (pushBeat).
+export function BeatView() {
+  const root = useRef(null);
+  const bpm = useRef(null);
+  const dots = useRef([]);
+  useEffect(() => registerBeatView({ root: root.current, bpm: bpm.current, dots: dots.current }), []);
+  return (
+    <span className="beat-view" ref={root} title="Tempo und Schlag im Takt, wie die App sie hört">
+      <b ref={bpm}>–</b> BPM
+      <span className="beat-dots" aria-hidden="true">
+        {[0, 1, 2, 3].map((i) => <i key={i} ref={(el) => { dots.current[i] = el; }} className={i === 0 ? 'one' : undefined} />)}
+      </span>
+    </span>
   );
 }

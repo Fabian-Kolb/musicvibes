@@ -5,7 +5,7 @@ import { computeFrame, createVisualState } from '../render/frame';
 import { read, sourceVersion } from '../audio/controller';
 import { SILENT_FRAME } from '../audio/analysis';
 import { settingsStore, liveStore, lightStore } from '../state/store';
-import { pushMeters } from '../state/meters';
+import { pushMeters, pushBeat } from '../state/meters';
 import { createLightState, computeLights } from '../lights/lightSync';
 import { desktopBridge } from '../audio/capture';
 import { PALETTES } from '../state/palettes';
@@ -63,6 +63,7 @@ export default function Visualizer() {
     let section = '';
     const L = createLightState();
     const meterValues = { bass: 0, mid: 0, high: 0, drive: 0 };
+    const beatValues = { bpm: 0, locked: false, barBeat: 0, event: false };
     let lightKey = '', lightSent = 0;
 
     // Govee lights: start or stop the stream when the chosen lights change, then send
@@ -151,6 +152,8 @@ export default function Visualizer() {
 
       meterValues.bass = E.meter[0]; meterValues.mid = E.meter[1]; meterValues.high = E.meter[2]; meterValues.drive = E.drive;
       pushMeters(meterValues);
+      beatValues.bpm = E.beat.bpm; beatValues.locked = E.locked; beatValues.barBeat = E.beat.barBeat; beatValues.event = E.beat.event;
+      pushBeat(beatValues);
 
       frames += 1;
       fpsT += dt;

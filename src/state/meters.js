@@ -16,3 +16,29 @@ export function pushMeters(values) {
     if (m.num.textContent !== text) m.num.textContent = text;
   });
 }
+
+// Tempo and beat counter: BPM and four dots, the current beat of the bar lit, written
+// every frame like the meters. Dimmed while the app hears no clear beat.
+const beatViews = new Set();
+
+export function registerBeatView(v) {
+  beatViews.add(v);
+  return () => beatViews.delete(v);
+}
+
+// beat: { bpm, locked, barBeat, event }
+export function pushBeat(beat) {
+  beatViews.forEach((v) => {
+    const text = beat.locked ? String(Math.round(beat.bpm)) : '–';
+    if (v.bpm.textContent !== text) v.bpm.textContent = text;
+    v.root.classList.toggle('locked', beat.locked);
+    v.dots.forEach((d, i) => {
+      d.classList.toggle('on', beat.locked && i === beat.barBeat);
+      if (beat.event && beat.locked && i === beat.barBeat) {
+        d.classList.remove('hit');
+        void d.offsetWidth; // restart the flash
+        d.classList.add('hit');
+      }
+    });
+  });
+}

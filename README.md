@@ -63,6 +63,8 @@ Pro Bild liest die App das Spektrum des Desktop-Tons zweimal: lang (FFT mit 4096
 
 Die Pegelanzeige und das Bild nutzen eine schnelle Fassung jedes Bandes: zwischen den leisen und den lauten Momenten der letzten Sekunden, aus der kurzen Analyse, 60-mal pro Sekunde aktualisiert. So schlägt der Bass bei jedem Kick aus und die Höhen bei jeder Hi-Hat. Gemessen wird die Leistung im Band. Jedes Band hat seine eigene automatische Aussteuerung, deshalb hebt der einsetzende Bass die Mitten und Höhen nicht mit an. Ein Band, das im Song kaum vorkommt (Bass in einem A-cappella-Intro), bleibt unten, statt hochverstärkt zu werden. Schläge (Kick, Snare, Hi-Hat) erkennt die App am spektralen Fluss: wie stark die Frequenzen eines Bandes gegenüber dem Moment davor ansteigen. Ein Drop zählt nur, wenn Bass und Kick nach einem Breakdown von ein paar Sekunden zurückkommen.
 
+**Takt.** Die App hört das Tempo und lässt einen inneren Takt mitlaufen, wie DJ-Software: Aus den Schlägen der letzten 8 Sekunden schätzt sie die BPM (70 bis 180), findet heraus, wo die Schläge liegen, und hält den Takt auch dann, wenn ein Kick im Mix untergeht. Mit klarem Beat pulsiert das Bild auf jedem Schlag, die 1 im Takt etwas stärker, und weil der Takt weiß, wann der nächste Schlag kommt, kommt der Puls schon einen Moment vor der Analyse und damit auf dem Schlag. Ein Basston oder Offbeat zwischen den Schlägen gibt nur einen kleinen Stoß. Ohne klaren Beat (Ambient, Stimme allein, Breakdown) reagiert das Bild wieder auf einzelne Kicks. Oben links stehen die erkannten BPM und der Zähler 1-2-3-4; die 1 sucht die App dort, wo Kicks und keine Snares sind, und nach einem Drop beginnt ein neuer Takt.
+
 Damit der Bass in jedem Stil auf dem Beat sitzt, bremsen die Regler den Anstieg nicht: Schlieren sind ein Nachleuchten (was heller wird, erscheint sofort, nur das Ausklingen zieht nach), und „Glättung“ macht nur das Ausklingen weicher. Vom Kick im Ton bis das Bild halb ausgeschlagen hat, vergehen so in der Simulation in allen Stilen 35 bis 45 ms; dazu kommen Windows-Aufnahme und Bildschirm.
 
 ## Licht (Govee)
@@ -113,6 +115,7 @@ npm test        # nur die Tests
 | `scripts/test-engine.mjs` | Audio-Engine mit den simulierten Songs: Drops an der richtigen Stelle, Kicks im Tempo, Drive je Genre, gleiches Verhalten bei leiser Musik |
 | `scripts/test-frame.mjs` | Musik → Bild: Strobe-Sicherheit, Unterschiede der Stile, Palettenwechsel, gespeicherte Einstellungen und Szenen |
 | `scripts/test-analysis.mjs` | Frequenzanalyse mit synthetischen Klängen (siehe unten) |
+| `scripts/test-beat.mjs` | Takt: Tempo und jeder Schlag pünktlich bei Pop, Hip-Hop, House mit Offbeat-Bass, Techno mit rollendem Bass, Hardtechno, Breakbeat und Dubstep; kein Takt ohne Beat; Loslassen im Breakdown |
 | `scripts/test-lights.mjs` | Govee: Pakete, Stream an ein nachgebautes Licht über echtes UDP, Wiederherstellen, Lichteffekte und Licht-Strobe |
 | `scripts/test-system-audio.mjs` | Linux-Desktop-Ton: Rückfall auf den nächsten Recorder, Fehlermeldungen, Wechsel des Ausgabegeräts, Worklet-Puffer der Seite |
 | `scripts/test-media.mjs` | Song-Anzeige: Cover-Palette, Windows-Mediensteuerung und playerctl (mit nachgebauten Programmen) |
@@ -130,7 +133,7 @@ Die Analyse-Tests spielen synthetische Stimmen, Bass, Kick, Snare und Hi-Hats du
 | `src/media/` | Song, der gerade läuft, und die Palette aus dem Cover |
 | `src/lights/` | Farben und Helligkeit der Lichter aus Musik und Bild |
 | `src/audio/` | Tonquelle starten (Desktop, Gerät, Testsignal) und Frequenzbänder messen (`analysis.js`) |
-| `src/engine/` | Audio-Engine (Auto-Pegel, Kicks, Drive, Drops) und das Testsignal |
+| `src/engine/` | Audio-Engine (Auto-Pegel, Kicks, Drive, Drops), Takt (`beatTracker.js`) und das Testsignal |
 | `src/render/` | WebGL-Shader, Renderer und die Abbildung Musik → Bild |
 | `src/state/` | Einstellungen, Szenen, Paletten (ein Objekt, später auch fürs Handy) |
 | `src/components/` | Oberfläche: Visualizer, Leiste, Einstellungen |

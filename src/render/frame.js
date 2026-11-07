@@ -65,19 +65,19 @@ export function computeFrame(E, V, S, dt, env = {}) {
   // - Bass (level and kicks): size and zoom of the colours, the pulse of the ground.
   // - Mids (voice, melody, snare): the shapes bend and the colours flow faster.
   // - Highs (hi-hats, cymbals): a fine twinkle inside the colours, plus the gloss in Glas.
-  const flowSpeed = (0.05 + 0.3 * d + (0.15 * E.eFast * r + 0.55 * E.punch * d * r) * S.peakSpeed
+  const flowSpeed = (0.05 + 0.3 * d + (0.15 * E.eFast * r + 0.55 * E.pulse * d * r) * S.peakSpeed
     + 0.3 * E.meter[1] * r * mi * S.peakSpeed
     + (dropping && S.dropBoost ? 0.2 : 0)) * S.speed * motion;
   V.flow += flowSpeed * dt;
 
   const zoomBase = (1.05 + 0.75 * d) / S.size;
-  const zoomTarget = zoomBase * Math.max(0.3, 1 - 0.3 * E.meter[0] * r * bi) * Math.max(0.3, 1 - 0.12 * E.punch * r * bp);
+  const zoomTarget = zoomBase * Math.max(0.3, 1 - 0.22 * E.meter[0] * r * bi) * Math.max(0.3, 1 - 0.2 * E.pulse * r * bp);
   // Fast toward a hit (the picture jumps with the kick), slow back out of it.
   V.zoom = ema(V.zoom, zoomTarget, dt, zoomTarget < V.zoom ? 0.01 : 0.15);
   V.warp = ema(V.warp, (0.35 + 0.6 * E.meter[1] * r * mi + 0.35 * E.snap * r * mi + 0.4 * d) * S.form, dt, E.snap > 0.3 ? 0.08 : 0.4);
   V.sharp = ema(V.sharp, 3.2 + 3.0 * d, dt, 1.5);
   // Minimal: bass makes the colour clouds swell, each kick gives a short push.
-  const sizeTarget = (0.17 + 0.09 * E.meter[0] * r * bi + 0.05 * E.punch * r * bp) * S.size;
+  const sizeTarget = (0.17 + 0.065 * E.meter[0] * r * bi + 0.08 * E.pulse * r * bp) * S.size;
   V.size = ema(V.size, sizeTarget, dt, sizeTarget > V.size ? 0.008 : 0.09);
 
   // Hue: up to 0.3 the palette only sways around itself; above that it slowly
@@ -93,7 +93,7 @@ export function computeFrame(E, V, S, dt, env = {}) {
   // The small margin keeps a 3 Hz cap at three flashes in any one-second window.
   const minGap = 1 / Math.max(0.5, strobeMaxRate(S)) + 0.005;
   const allowed = S.strobe && (S.strobeMode === 'always' ? !E.silent : dropping);
-  if (allowed && E.now - V.lastFlash >= minGap && (S.strobeSync === 'rate' || E.kickEvent)) {
+  if (allowed && E.now - V.lastFlash >= minGap && (S.strobeSync === 'rate' || E.pulseEvent)) {
     V.flash = 1;
     V.lastFlash = E.now;
     V.flashIdx = (V.flashIdx + 1) % 5;
@@ -135,14 +135,14 @@ export function computeFrame(E, V, S, dt, env = {}) {
   P.twinkle = clamp(0.9 * E.meter[2] * E.meter[2] * r * hi, 0, 1.2);
   P.depth = 0.3 - 0.2 * d;
   P.hue = V.hue + V.hueCycle + (S.hueShift * Math.PI) / 180;
-  P.ripAge = E.now - E.kickT;
-  P.ripAmp = glassy && E.kickT > 0 ? clamp(0.4 + d) * r * bp : 0;
+  P.ripAge = E.now - E.pulseT;
+  P.ripAmp = glassy && E.pulseT > 0 ? clamp(0.4 + d) * r * bp : 0;
   P.sat = (glassy ? 1.35 + 0.2 * d : 1.1 + 0.15 * d) * S.saturation;
   P.style = STYLE_CODE[S.style] ?? 1;
   P.size = V.size;
   P.count = clamp(Math.round(S.count), 1, 8);
   const bg = hexToRgb(S.bgColor);
-  const pulse = 1 + 1.5 * E.punch * r * bp;
+  const pulse = 1 + 1.5 * E.pulse * r * bp;
   P.bg[0] = bg[0] * pulse; P.bg[1] = bg[1] * pulse; P.bg[2] = bg[2] * pulse;
   P.sym = SYM_CODE[S.symmetry] ?? 0;
   P.symN = clamp(Math.round(S.symmetrySegments), 2, 16);
@@ -150,9 +150,9 @@ export function computeFrame(E, V, S, dt, env = {}) {
   P.colors = V.colors;
   P.trail = trail;
   P.trailUp = trailUp;
-  P.fbZoom = glassy ? Math.pow(1.003 + 0.035 * E.punch * r * bp + (dropping ? 0.01 : 0), per60) : 1;
+  P.fbZoom = glassy ? Math.pow(1.003 + 0.035 * E.pulse * r * bp + (dropping ? 0.01 : 0), per60) : 1;
   P.fbRot = glassy ? (0.004 * Math.sin(V.flow * 0.35) + (dropping ? 0.012 : 0)) * per60 : 0;
-  P.bright = (0.88 + 0.3 * E.punch * r * bp + (dropping ? 0.08 : 0)) * S.brightness;
+  P.bright = (0.88 + 0.3 * E.pulse * r * bp + (dropping ? 0.08 : 0)) * S.brightness;
   P.flash = V.flash * S.strobeIntensity;
   P.vignette = S.vignette;
   P.flashCol = S.strobeColor === 'palette' ? V.colors.subarray(V.flashIdx * 3, V.flashIdx * 3 + 3) : WHITE;

@@ -11,6 +11,11 @@
 // - Hits (E.kickEvent, E.snareEvent, E.hatEvent): short transients in that band.
 // - Rate (E.kickRate, E.snareRate, E.hatRate): how many hits per second.
 // On top of that:
+// - Beat (E.beat, beatTracker.js): tempo, a beat clock and the beat of the bar.
+// - Pulse (E.pulse, E.pulseEvent): what the picture pulses with. With a clear beat it
+//   comes from the beat clock, so it lands on every beat, the 1 of the bar a little
+//   stronger, and a bass note between the beats only gives a small push. Without a
+//   clear beat it comes from the kicks as they are detected.
 // - Drive: the character of the music from calm (0) to peak (1), read from rhythmic
 //   density and kick hardness rather than loudness.
 // - Drops: bass and kick slamming back in after a breakdown of a few seconds, with
@@ -23,6 +28,8 @@
 // that is nearly empty in this song (the bass during an a cappella intro) stays low
 // instead of being amplified to full scale. Each band is measured on its own, so
 // the bass coming in does not lift the mids and highs.
+
+import { createBeatTracker, updateBeat, startBar } from './beatTracker.js';
 
 export const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
 export const ema = (cur, target, dt, tau) => cur + (target - cur) * (1 - Math.exp(-dt / tau));
@@ -55,6 +62,7 @@ const ATTACK = 0.15; // seconds for a ceiling to rise to a louder level
 const MIN_SPAN = 9;
 const METER_ATTACK = [0.006, 0.01, 0.004]; // seconds, bass mid high
 const METER_RELEASE = [0.09, 0.12, 0.07];
+const OFF_BEAT = 0.55; // pulse of a hit between the beats, against one on the beat
 
 function onsetDetector() {
   return { avg: 0, armed: true, last: -10, times: [], ref: null };
@@ -72,6 +80,7 @@ export function createEngine() {
     kickRate: 0, snareRate: 0, hatRate: 0,
     kickEvent: false, snareEvent: false, hatEvent: false,
     punch: 0, snap: 0, sparkle: 0, crest: 0.5, kickT: -10,
+    beat: createBeatTracker(), locked: false, pulse: 0, pulseEvent: false, pulseT: -10,
     eFast: 0, eMed: 0, eLong: 0, warm: 0, bassSlow: 0, thinFor: 0, lastThin: 0, sinceThin: 10,
     armed: true, cooldown: 0, dropHold: 0, dropStart: -10, dropEvent: false, drops: 0,
     drive: 0.3,
@@ -86,6 +95,8 @@ export function resetEngine(E) {
   E.mCeil = [null, null, null];
   E.mFloor = [null, null, null];
   E.warm = 0;
+  E.beat = createBeatTracker();
+  E.locked = false;
   E.dropHold = 0;
   E.cooldown = 0;
   E.armed = true;
@@ -198,6 +209,30 @@ export function updateEngine(E, raw, dt, options = DEFAULT_ENGINE_OPTIONS) {
   E.punch *= Math.exp(-dt * 6.5);
   E.snap *= Math.exp(-dt * 8);
   E.sparkle *= Math.exp(-dt * 12);
+  // Beat clock and the picture's pulse.
+  const B = updateBeat(E.beat, { bass: flux.bass * present(0), mid: flux.mid, high: flux.high }, dt, quiet);
+  E.locked = E.locked ? B.conf > 0.4 : B.conf > 0.55;
+  E.pulseEvent = false;
+  if (E.locked) {
+    if (B.event) {
+      E.pulse = Math.max(E.pulse, (B.downbeat ? 1 : 0.85) * Math.max(0.6, E.crest));
+      E.pulseEvent = true;
+      E.pulseT = E.now;
+    }
+    // A kick right at the beat may make it stronger; a hit between the beats (a bass
+    // note, an offbeat) only gives a small push.
+    if (E.kickEvent) {
+      const fromBeat = Math.min(E.now - B.lastEvent, B.period - (E.now - B.lastEvent));
+      E.pulse = Math.max(E.pulse, (fromBeat < 0.07 ? 1 : OFF_BEAT) * (0.35 + 0.65 * kick));
+    }
+  } else if (E.kickEvent) {
+    E.pulse = Math.max(E.pulse, 0.35 + 0.65 * kick);
+    E.pulseEvent = true;
+    E.pulseT = E.now;
+  }
+  // Fades before the next beat, also at fast tempos.
+  E.pulse *= Math.exp(-dt / (E.locked ? Math.min(0.154, 0.33 * B.period) : 0.154));
+
   E.kickRate = E.kick.times.length / 4;
   E.snareRate = E.snare.times.length / 4;
   E.hatRate = E.hat.times.length / 4;
@@ -235,6 +270,8 @@ export function updateEngine(E, raw, dt, options = DEFAULT_ENGINE_OPTIONS) {
     E.dropStart = E.now;
     E.dropEvent = true;
     E.drops += 1;
+    // The drop's first beat is the 1 of a bar.
+    startBar(E.beat);
   }
 
   // Drive: calm (0) to peak (1).

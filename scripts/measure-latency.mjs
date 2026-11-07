@@ -42,17 +42,19 @@ function run(settings, oldTrails = false) {
     const bright = S.style === 'glass' ? -P.zoom : P.size;
     px = px === null ? bright : trailBlend(bright, px, Pt);
     bgPx = bgPx === null ? P.bg[0] : trailBlend(P.bg[0], bgPx, Pt);
-    return { t, kick: E.kickEvent, punch: E.punch, size: P.size, zoom: P.zoom, px, bgPx, bass: E.meter[0], mid: E.meter[1], high: E.meter[2] };
+    return { t, kick: E.kickEvent, punch: E.pulse, size: P.size, zoom: P.zoom, px, bgPx, bass: E.meter[0], mid: E.meter[1], high: E.meter[2] };
   });
 }
 
-// Time until a value has made half its move toward this kick's peak, averaged over kicks.
+// Time until a value has made half its move toward this kick's peak, averaged over
+// kicks. Negative: the picture moved before the kick reached the analysis.
 function delays(rows) {
   const out = { kick: [], punch: [], size: [], zoom: [], px: [], bgPx: [], bass: [] };
   for (let k = 8; k < 36; k++) {
     const t0 = k * beat;
-    const win = rows.filter((r) => r.t >= t0 && r.t < t0 + beat * 0.9);
-    const hit = win.find((r) => r.kick);
+    // From a little before the kick: with the beat clock the pulse may come first.
+    const win = rows.filter((r) => r.t >= t0 - beat * 0.15 && r.t < t0 + beat * 0.8);
+    const hit = win.find((r) => r.kick && r.t >= t0);
     if (hit) out.kick.push(hit.t - t0);
     const half = (key, sign = 1) => {
       const v = win.map((r) => sign * r[key]);
