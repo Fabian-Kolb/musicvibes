@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef } from 'react';
-import { registerMeter, registerBeatView } from '../state/meters';
+import { registerMeter, registerBeatView, sendBeatCommand } from '../state/meters';
 
 // Small form controls shared by the dock and the settings panel.
 
@@ -89,17 +89,56 @@ export function Meter({ label, value = 0, band }) {
 }
 
 // Tempo and beat of the bar, 1 to 4, filled in by the render loop (pushBeat).
-export function BeatView() {
+// A click opens the beat view.
+export function BeatView({ onClick, open }) {
   const root = useRef(null);
   const bpm = useRef(null);
   const dots = useRef([]);
   useEffect(() => registerBeatView({ root: root.current, bpm: bpm.current, dots: dots.current }), []);
   return (
-    <span className="beat-view" ref={root} title="Tempo und Schlag im Takt, wie die App sie hört">
+    <button type="button" className="beat-view" ref={root} onClick={onClick} aria-expanded={open}
+      title="Tempo und Schlag im Takt, wie die App sie hört. Klicken für die Takt-Ansicht">
       <b ref={bpm}>–</b> BPM
       <span className="beat-dots" aria-hidden="true">
         {[0, 1, 2, 3].map((i) => <i key={i} ref={(el) => { dots.current[i] = el; }} className={i === 0 ? 'one' : undefined} />)}
       </span>
-    </span>
+    </button>
+  );
+}
+
+// What the beat detection is doing right now, and buttons to correct it.
+export function BeatPanel({ onClose }) {
+  const refs = useRef({ dots: [] });
+  useEffect(() => {
+    const r = refs.current;
+    return registerBeatView({ root: r.root, bpm: r.bpm, dots: r.dots, state: r.state, est: r.est, conf: r.conf, hold: r.hold, song: r.song });
+  }, []);
+  const set = (k) => (el) => { refs.current[k] = el; };
+  return (
+    <section className="beat-panel" ref={set('root')} aria-label="Takt-Ansicht">
+      <header>
+        <strong>Takt</strong>
+        <button type="button" className="text-btn" onClick={onClose}>Schließen</button>
+      </header>
+      <p className="beat-state" ref={set('state')} role="status" />
+      <div className="beat-big">
+        <b ref={set('bpm')}>–</b> BPM
+        <span className="beat-dots big" aria-hidden="true">
+          {[0, 1, 2, 3].map((i) => <i key={i} ref={(el) => { refs.current.dots[i] = el; }} className={i === 0 ? 'one' : undefined} />)}
+        </span>
+      </div>
+      <dl className="beat-facts">
+        <dt>Gerade gemessen</dt><dd ref={set('est')}>–</dd>
+        <dt>Sicherheit</dt><dd><i className="bar" ref={set('conf')} /></dd>
+        <dt>Bass im Takt</dt><dd><i className="bar" ref={set('hold')} /></dd>
+      </dl>
+      <p className="beat-song" ref={set('song')} />
+      <div className="beat-actions">
+        <button type="button" onClick={() => sendBeatCommand('reset')} title="Vergisst das Tempo und hört neu hin">Neu suchen</button>
+        <button type="button" onClick={() => sendBeatCommand('half')} title="Wenn der Puls doppelt so schnell ist wie die Musik">Halbes Tempo</button>
+        <button type="button" onClick={() => sendBeatCommand('double')} title="Wenn der Puls nur jeden zweiten Schlag kommt">Doppeltes Tempo</button>
+        <button type="button" onClick={() => sendBeatCommand('one')} title="Im Moment des ersten Schlags im Takt drücken">Hier ist die 1</button>
+      </div>
+    </section>
   );
 }

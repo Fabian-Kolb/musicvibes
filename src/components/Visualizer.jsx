@@ -1,11 +1,12 @@
 import { useEffect, useRef } from 'react';
-import { createEngine, resetEngine, updateEngine, moodOf } from '../engine/audioEngine';
+import { createEngine, resetEngine, updateEngine, moodOf, beatControl } from '../engine/audioEngine';
 import { createRenderer } from '../render/renderer';
 import { computeFrame, createVisualState } from '../render/frame';
 import { read, sourceVersion } from '../audio/controller';
 import { SILENT_FRAME } from '../audio/analysis';
-import { settingsStore, liveStore, lightStore } from '../state/store';
-import { pushMeters, pushBeat } from '../state/meters';
+import { settingsStore, liveStore, lightStore, mediaStore } from '../state/store';
+import { pushMeters, pushBeat, onBeatCommand } from '../state/meters';
+import { songKey, rememberedTempo, rememberTempo, forgetTempo } from '../state/tempoMemory';
 import { createLightState, computeLights } from '../lights/lightSync';
 import { desktopBridge } from '../audio/capture';
 import { PALETTES } from '../state/palettes';
@@ -63,7 +64,24 @@ export default function Visualizer() {
     let section = '';
     const L = createLightState();
     const meterValues = { bass: 0, mid: 0, high: 0, drive: 0 };
-    const beatValues = { bpm: 0, locked: false, barBeat: 0, event: false };
+    const beatValues = { bpm: 0, est: 0, state: 'search', locked: false, conf: 0, hold: 0, barBeat: 0, event: false, song: '', remembered: 0 };
+    // Each song has one tempo: a new song (title from the now-playing card) starts a
+    // new search, with the tempo it had last time if it played before. Once the beat
+    // has held for 20 seconds, it is remembered for next time.
+    let song = songKey(mediaStore.get()), stored = false;
+    const stopSongWatch = mediaStore.subscribe(() => {
+      const key = songKey(mediaStore.get());
+      if (!key || key === song) return;
+      song = key;
+      stored = false;
+      beatControl(E, 'reset', rememberedTempo(key));
+    });
+    const stopBeatCommands = onBeatCommand((action) => {
+      beatControl(E, action);
+      // A correction by hand is what the song really has.
+      if (action === 'half' || action === 'double') stored = false;
+      if (action === 'reset') forgetTempo(song);
+    });
     let lightKey = '', lightSent = 0;
 
     // Govee lights: start or stop the stream when the chosen lights change, then send
@@ -152,7 +170,12 @@ export default function Visualizer() {
 
       meterValues.bass = E.meter[0]; meterValues.mid = E.meter[1]; meterValues.high = E.meter[2]; meterValues.drive = E.drive;
       pushMeters(meterValues);
-      beatValues.bpm = E.beat.bpm; beatValues.locked = E.locked; beatValues.barBeat = E.beat.barBeat; beatValues.event = E.beat.event;
+      const B = E.beat;
+      if (song && !stored && B.state === 'locked' && B.now - B.since > 20) { rememberTempo(song, B.bpm); stored = true; }
+      beatValues.bpm = B.bpm; beatValues.est = B.est; beatValues.state = B.state; beatValues.locked = E.locked;
+      beatValues.conf = B.conf; beatValues.hold = B.hold; beatValues.barBeat = B.barBeat; beatValues.event = B.event;
+      beatValues.song = song ? `${mediaStore.get().artist} – ${mediaStore.get().title}` : '';
+      beatValues.remembered = rememberedTempo(song);
       pushBeat(beatValues);
 
       frames += 1;
@@ -172,6 +195,8 @@ export default function Visualizer() {
     window.__vibsync = { E, V, raw: null };
     return () => {
       cancelAnimationFrame(raf);
+      stopSongWatch();
+      stopBeatCommands();
       renderer.destroy();
       if (lightKey) lightBridge.end().catch(() => {});
     };

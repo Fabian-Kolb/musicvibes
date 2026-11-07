@@ -86,6 +86,7 @@ export const DEFAULTS = {
   quality: 'auto', // auto | high | medium | low
   fpsLimit: 0, // 0 = so schnell wie der Bildschirm
   showHud: true,
+  beatPanel: false, // Takt-Ansicht open
   showFps: false,
   autoHide: 3.5,
   alwaysOnTop: false,

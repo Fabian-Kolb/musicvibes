@@ -17,7 +17,7 @@ export function pushMeters(values) {
   });
 }
 
-// Tempo and beat counter: BPM and four dots, the current beat of the bar lit, written
+// Tempo and beat: the BPM badge in the HUD and the beat view (Takt-Ansicht), written
 // every frame like the meters. Dimmed while the app hears no clear beat.
 const beatViews = new Set();
 
@@ -26,12 +26,20 @@ export function registerBeatView(v) {
   return () => beatViews.delete(v);
 }
 
-// beat: { bpm, locked, barBeat, event }
+const STATE_TEXT = {
+  search: 'Sucht den Takt …',
+  locked: 'Takt gefunden',
+  held: 'Takt gehalten, gerade kein Beat zu hören',
+};
+
+const setText = (el, text) => { if (el && el.textContent !== text) el.textContent = text; };
+
+// beat: { bpm, est, state, locked, conf, hold, barBeat, event, song, remembered }
 export function pushBeat(beat) {
   beatViews.forEach((v) => {
-    const text = beat.locked ? String(Math.round(beat.bpm)) : '–';
-    if (v.bpm.textContent !== text) v.bpm.textContent = text;
+    setText(v.bpm, beat.locked ? String(Math.round(beat.bpm)) : '–');
     v.root.classList.toggle('locked', beat.locked);
+    v.root.classList.toggle('held', beat.state === 'held');
     v.dots.forEach((d, i) => {
       d.classList.toggle('on', beat.locked && i === beat.barBeat);
       if (beat.event && beat.locked && i === beat.barBeat) {
@@ -40,5 +48,19 @@ export function pushBeat(beat) {
         d.classList.add('hit');
       }
     });
+    if (!v.state) return;
+    setText(v.state, STATE_TEXT[beat.state] || '');
+    setText(v.est, beat.est ? `${beat.est.toFixed(1)} BPM` : '–');
+    v.conf.style.setProperty('--v', Math.max(0, Math.min(1, beat.conf)).toFixed(3));
+    v.hold.style.setProperty('--v', Math.max(0, Math.min(1, beat.hold)).toFixed(3));
+    setText(v.song, beat.song ? `${beat.song}${beat.remembered ? ` · gemerkt: ${Math.round(beat.remembered)} BPM` : ''}` : 'Kein Lied erkannt (neues Lied = Pause oder Titelwechsel)');
   });
 }
+
+// Buttons in the beat view reach the engine in the render loop through this.
+let beatHandler = null;
+export function onBeatCommand(fn) {
+  beatHandler = fn;
+  return () => { if (beatHandler === fn) beatHandler = null; };
+}
+export const sendBeatCommand = (action) => { if (beatHandler) beatHandler(action); };

@@ -1,17 +1,18 @@
 // Tests for the beat clock: tempo, beats on time, nothing between the beats, no clock
-// without a beat, letting go in a breakdown and finding a new tempo.
+// without a beat, holding the beat through breakdowns and fills, a new song's tempo.
 // Beats where kick and bass are hard to tell apart come from lib/beats.mjs.
 // Run: npm test
 import assert from 'node:assert/strict';
 import { check, finish } from './lib/check.mjs';
 import { createAnalyser } from './lib/webaudio.mjs';
 import { SR, render, voice, pad, bass, hats, snare } from './lib/synth.mjs';
-import { BEATS, kickAt, freeVoice } from './lib/beats.mjs';
+import { BEATS, kickAt, freeVoice, messyKick, bassAt, clapAt } from './lib/beats.mjs';
 import { createAnalysis, analyse } from '../src/audio/analysis.js';
-import { createEngine, updateEngine, DEFAULT_ENGINE_OPTIONS } from '../src/engine/audioEngine.js';
+import { createEngine, updateEngine, beatControl, DEFAULT_ENGINE_OPTIONS } from '../src/engine/audioEngine.js';
 
 // Plays sections through both analysers and the engine, like the app does.
-function play(sections, dt = 1 / 60) {
+// start(E) runs once before the first frame.
+function play(sections, dt = 1 / 60, start = null) {
   const { pcm } = render(sections);
   const hop = Math.round(SR * dt);
   const an = createAnalyser({ sampleRate: SR });
@@ -20,12 +21,13 @@ function play(sections, dt = 1 / 60) {
   const A = createAnalysis(SR, an.fftSize);
   const fast = { A: createAnalysis(SR, 2048), spectrum: new Float32Array(fan.frequencyBinCount).fill(-Infinity) };
   const E = createEngine();
+  if (start) start(E);
   const rows = [];
   for (let end = hop; end <= pcm.length; end += hop) {
     an.getFloatFrequencyData(spec, pcm, end);
     fan.getFloatFrequencyData(fast.spectrum, pcm, end);
     updateEngine(E, analyse(A, spec, dt, fast), dt, DEFAULT_ENGINE_OPTIONS);
-    rows.push({ t: end / SR, locked: E.locked, pulse: E.pulse, event: E.pulseEvent, bpm: E.beat.bpm, conf: E.beat.conf });
+    rows.push({ t: end / SR, locked: E.locked, pulse: E.pulse, event: E.pulseEvent, bpm: E.beat.bpm, conf: E.beat.conf, state: E.beat.state });
   }
   return { rows, E };
 }
@@ -79,16 +81,67 @@ check('No beat, no clock: a freely sung voice or a pad alone never locks', () =>
   }
 });
 
-check('Breakdown: the clock lets go within 3 s; the next song\'s tempo is found within 6 s', () => {
+check('Breakdown: the clock is held and the picture goes quiet; the next song\'s tempo replaces it within 7 s', () => {
   const [house, techno] = BEATS;
   const { rows } = play([...withKicks(house, 12), { name: 'break', secs: 8, parts: [pad(), freeVoice(voice())] }, ...withKicks(techno, 14)]);
   assert.ok(rows.filter((r) => r.t > 8 && r.t < 12).every((r) => r.locked), 'not locked in the first song');
-  const free = rows.find((r) => r.t > 12 && !r.locked);
-  assert.ok(free && free.t < 15, `still locked at ${free ? free.t.toFixed(1) : 'the end'} s`);
+  const inBreak = rows.filter((r) => r.t > 15 && r.t < 20);
+  assert.ok(inBreak.every((r) => r.locked), 'let go of the beat in the breakdown');
+  assert.ok(inBreak.every((r) => r.state === 'held' || r.pulse < 0.5), 'pulses through the breakdown');
   const back = rows.find((r) => r.t > 20 && r.locked && Math.abs(r.bpm / 145 - 1) < 0.01);
-  assert.ok(back && back.t < 26, `145 BPM found at ${back ? back.t.toFixed(1) : 'never'} s`);
+  assert.ok(back && back.t < 27, `145 BPM at ${back ? back.t.toFixed(1) : 'never'} s`);
   const r = onBeat(rows, 145, 28, 34);
   assert.ok(r.hit >= r.of - 1 && r.extra === 0, `after the switch ${r.hit}/${r.of} beats, ${r.extra} extra`);
+});
+
+check('Same song after a breakdown: the held beat pulses again within four beats, on the beat', () => {
+  const house = BEATS[0];
+  const { rows } = play([...withKicks(house, 12), { name: 'break', secs: 8, parts: [pad()] }, ...withKicks(house, 10)]);
+  const quiet = rows.filter((r) => r.t > 15 && r.t < 20);
+  assert.ok(quiet.every((r) => r.locked && !r.event), 'pulses or lost tempo in the breakdown');
+  const again = rows.find((r) => r.t > 20 && r.event && r.state === 'locked');
+  assert.ok(again && again.t < 22.5, `first pulse after the breakdown at ${again ? again.t.toFixed(1) : 'never'} s`);
+  const r = onBeat(rows, 124, 22, 30);
+  assert.ok(r.hit >= r.of - 1 && r.extra === 0, `${r.hit}/${r.of} beats, ${r.extra} extra`);
+});
+
+check('A real-sounding song keeps its beat: kicks off the grid, fills, ghost hits, a free voice', () => {
+  const bpm = 138;
+  const { rows } = play([{ name: 'song', secs: 40, parts: [messyKick(bpm), bassAt(bpm, [0.25, 0.5, 0.75, 1.25, 1.5, 1.75, 2.25, 2.5, 2.75, 3.25, 3.5, 3.75], 0.2), hats({ bpm }), clapAt(bpm, [1, 3]), freeVoice(voice())] }]);
+  const first = rows.find((r) => r.locked);
+  assert.ok(first && first.t < 7, `beat found at ${first ? first.t.toFixed(1) : 'never'} s`);
+  const after = rows.filter((r) => r.t > first.t);
+  assert.ok(after.every((r) => r.locked), `lost the beat at ${after.find((r) => !r.locked)?.t.toFixed(1)} s`);
+  const r = onBeat(rows, bpm, 10, 40);
+  assert.ok(r.hit >= r.of * 0.95 && r.extra === 0, `${r.hit}/${r.of} beats, ${r.extra} extra`);
+});
+
+check('A pause between songs starts a new search; a remembered tempo is found again sooner', () => {
+  const [house, techno] = BEATS;
+  const { rows } = play([...withKicks(house, 10), { name: 'pause', secs: 3, parts: [] }, ...withKicks(techno, 12)]);
+  assert.ok(rows.some((r) => r.t > 12 && r.t < 13 && r.state === 'search'), 'no new search after the pause');
+  const back = rows.find((r) => r.t > 13 && r.locked);
+  assert.ok(back && Math.abs(back.bpm / 145 - 1) < 0.01, `new song locked at ${back?.bpm.toFixed(1)} BPM`);
+  // Same song with its tempo remembered from last time.
+  const fresh = play(withKicks(techno, 10));
+  const seeded = play(withKicks(techno, 10), 1 / 60, (E) => beatControl(E, 'reset', 145));
+  const t0 = fresh.rows.find((r) => r.locked).t, t1 = seeded.rows.find((r) => r.locked).t;
+  assert.ok(t1 <= t0 - 0.5, `remembered tempo locked at ${t1.toFixed(1)} s, fresh at ${t0.toFixed(1)} s`);
+});
+
+check('Beat buttons: half and double tempo, search again, the 1 set by hand stays', () => {
+  const b = BEATS[1];
+  const { E } = play(withKicks(b, 12));
+  beatControl(E, 'half');
+  assert.ok(Math.abs(E.beat.bpm - 72.5) < 1 && E.locked);
+  beatControl(E, 'double');
+  assert.ok(Math.abs(E.beat.bpm - 145) < 1 && E.locked);
+  beatControl(E, 'one');
+  assert.equal(E.beat.barBeat, 0);
+  assert.equal(E.beat.oneFixed, true);
+  beatControl(E, 'reset');
+  assert.equal(E.locked, false);
+  assert.equal(E.beat.bpm, 0);
 });
 
 check('Same tempo and beats at 144 and 30 frames per second', () => {

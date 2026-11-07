@@ -29,7 +29,7 @@
 // instead of being amplified to full scale. Each band is measured on its own, so
 // the bass coming in does not lift the mids and highs.
 
-import { createBeatTracker, updateBeat, startBar } from './beatTracker.js';
+import { createBeatTracker, updateBeat, startBar, resetBeat, scaleTempo } from './beatTracker.js';
 
 export const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
 export const ema = (cur, target, dt, tau) => cur + (target - cur) * (1 - Math.exp(-dt / tau));
@@ -211,11 +211,14 @@ export function updateEngine(E, raw, dt, options = DEFAULT_ENGINE_OPTIONS) {
   E.sparkle *= Math.exp(-dt * 12);
   // Beat clock and the picture's pulse.
   const B = updateBeat(E.beat, { bass: flux.bass * present(0), mid: flux.mid, high: flux.high }, dt, quiet);
-  E.locked = E.locked ? B.conf > 0.4 : B.conf > 0.55;
+  E.locked = B.state !== 'search';
   E.pulseEvent = false;
   if (E.locked) {
-    if (B.event) {
-      E.pulse = Math.max(E.pulse, (B.downbeat ? 1 : 0.85) * Math.max(0.6, E.crest));
+    // The picture only pulses as far as there is still a beat to hear: it fades out
+    // with the bass. Held through a breakdown, the clock keeps counting silently.
+    const gain = B.state === 'locked' ? clamp(B.hold / 0.6) : 0;
+    if (B.event && gain > 0.05) {
+      E.pulse = Math.max(E.pulse, (B.downbeat ? 1 : 0.85) * Math.max(0.6, E.crest) * gain);
       E.pulseEvent = true;
       E.pulseT = E.now;
     }
@@ -284,3 +287,13 @@ export function updateEngine(E, raw, dt, options = DEFAULT_ENGINE_OPTIONS) {
 
 const MOODS = [[0.38, 'Ruhig'], [0.55, 'Groove'], [0.78, 'Energie'], [2, 'Peak']];
 export const moodOf = (drive) => MOODS.find((m) => drive < m[0])[1];
+
+// From the beat view: 'reset' (search again), 'half', 'double', 'one' (this beat is
+// the 1), or a new song with the tempo it had last time (seed, 0 if unknown).
+export function beatControl(E, action, seed = 0) {
+  if (action === 'reset') resetBeat(E.beat, seed);
+  else if (action === 'half') scaleTempo(E.beat, 0.5);
+  else if (action === 'double') scaleTempo(E.beat, 2);
+  else if (action === 'one') startBar(E.beat, true);
+  E.locked = E.beat.state !== 'search';
+}

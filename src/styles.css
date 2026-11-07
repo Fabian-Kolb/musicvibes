@@ -53,9 +53,39 @@ button, input, select { font: inherit; color: inherit; }
 }
 .section { text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--ink-dim); }
 .beat-view {
-  display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--ink-faint);
+  display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 12px; font-weight: 600; color: var(--ink-faint);
   padding: 4px 10px; border-radius: 999px; background: var(--glass); border: 1px solid var(--line); backdrop-filter: blur(14px);
+  pointer-events: auto; cursor: pointer;
 }
+.beat-view:hover, .beat-view[aria-expanded="true"] { border-color: var(--accent); }
+.beat-view.held { color: var(--ink-dim); }
+.beat-panel {
+  position: fixed; left: 16px; bottom: 96px; z-index: 5; width: min(320px, calc(100% - 32px));
+  display: grid; gap: 10px; padding: 14px 16px; border-radius: 16px;
+  background: var(--glass); border: 1px solid var(--line); backdrop-filter: blur(20px) saturate(140%);
+  font-size: 13px; color: var(--ink-dim);
+}
+.beat-panel header { display: flex; justify-content: space-between; align-items: center; color: var(--ink); }
+.beat-state { margin: 0; color: var(--ink); font-weight: 600; }
+.beat-panel.held .beat-state { color: var(--ink-dim); }
+.beat-big { display: flex; align-items: center; gap: 8px; color: var(--ink-faint); }
+.beat-big b { font-family: var(--mono); font-size: 34px; line-height: 1; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+.beat-panel.locked .beat-big b { color: var(--ink); }
+.beat-dots.big { gap: 8px; margin-left: auto; }
+.beat-dots.big i { width: 12px; height: 12px; }
+.beat-dots.big i.one { width: 16px; height: 16px; }
+.beat-facts { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 0; align-items: center; }
+.beat-facts dt { font-size: 12px; }
+.beat-facts dd { margin: 0; font-family: var(--mono); font-size: 12px; color: var(--ink); }
+.beat-facts .bar { display: block; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+.beat-facts .bar::after { content: ''; display: block; height: 100%; transform-origin: left; transform: scaleX(var(--v, 0)); background: linear-gradient(90deg, var(--accent), var(--hot)); }
+.beat-song { margin: 0; font-size: 12px; color: var(--ink-faint); overflow-wrap: anywhere; }
+.beat-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.beat-actions button {
+  font: inherit; font-size: 12px; padding: 7px 8px; border-radius: 10px; cursor: pointer;
+  color: var(--ink); background: rgba(255, 255, 255, 0.06); border: 1px solid var(--line);
+}
+.beat-actions button:hover { border-color: var(--accent); }
 .beat-view b { font-family: var(--mono); font-variant-numeric: tabular-nums; min-width: 3ch; text-align: right; }
 .beat-view.locked { color: var(--ink); }
 .beat-dots { display: inline-flex; gap: 4px; margin-left: 2px; }

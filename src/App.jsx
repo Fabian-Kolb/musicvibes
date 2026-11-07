@@ -3,7 +3,7 @@ import { Settings, Maximize2, EyeOff, Zap, Play, RotateCw } from 'lucide-react';
 import Visualizer from './components/Visualizer';
 import SettingsPanel from './components/SettingsPanel';
 import NowPlaying, { CoverSwatch } from './components/NowPlaying';
-import { Segmented, Meter, BeatView } from './components/controls';
+import { Segmented, Meter, BeatView, BeatPanel } from './components/controls';
 import { STYLES } from './state/settings';
 import { PALETTES, CUSTOM_PALETTE, COVER_PALETTE } from './state/palettes';
 import { settingsStore, audioStore, liveStore, useSettings, useStore, setSetting } from './state/store';
@@ -44,7 +44,7 @@ function Hud({ s }) {
       <div className="brand"><b>VibSync</b></div>
       <div className="mood-row">
         <span className="mood">{live.mood}</span>
-        <BeatView />
+        <BeatView open={s.beatPanel} onClick={() => setSetting('beatPanel', !s.beatPanel)} />
         {live.drop && <span className="drop">Drop</span>}
         {s.source === 'demo' && live.section && <span className="section">Testsignal · {live.section}</span>}
       </div>
@@ -191,6 +191,7 @@ export default function App() {
     <div className={`app${idle ? ' idle' : ''}${panel ? ' panel-open' : ''}`}>
       <Visualizer />
       <Hud s={s} />
+      {s.beatPanel && <BeatPanel onClose={() => setSetting('beatPanel', false)} />}
       <div className="top-right">
         {s.showFps && <div className="fps">{live.fps} FPS{softwareGl ? ' · Grafik ohne GPU' : ''}</div>}
         {mediaSupported && <NowPlaying mode={s.nowPlaying} idle={idle} uiHandlers={uiHandlers} />}

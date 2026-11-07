@@ -82,3 +82,27 @@ export function kickTimes(b, from, to) {
 export function freeVoice(v) {
   return (t) => v(t + 0.12 * Math.sin((2 * Math.PI * t) / 3.1) + 0.09 * Math.sin((2 * Math.PI * t) / 1.37));
 }
+
+// A kick track like in a real song: slightly off the grid (jitter in seconds), a
+// fill every `fillEvery` bars where the kick stops for the last two beats, and ghost
+// hits on random sixteenths. Quieter than the others by `gain`.
+export function messyKick(bpm, { jitter = 0.008, fillEvery = 4, ghost = 0.12, gain = 0.7 } = {}) {
+  const beat = 60 / bpm, step = beat / 4;
+  const one = kick({ bpm: 1e-6 });
+  let s = 777;
+  const r = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+  // Hit times, made once for 120 s.
+  const hits = [];
+  for (let i = 0; i * step < 120; i++) {
+    const bar = Math.floor(i / 16), inBar = i % 16;
+    const onBeat = inBar % 4 === 0;
+    const fill = (bar % fillEvery) === fillEvery - 1 && inBar >= 8;
+    if ((onBeat && !fill) || (!onBeat && r() < ghost)) hits.push(i * step + (r() - 0.5) * 2 * jitter);
+  }
+  let k = 0;
+  return (t) => {
+    while (k + 1 < hits.length && hits[k + 1] <= t) k++;
+    if (hits[k] > t) return 0;
+    return one(t - hits[k]) * gain;
+  };
+}
