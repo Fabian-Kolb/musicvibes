@@ -1,0 +1,306 @@
+<title>VibSync Glas-Button</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: one full-width stage with a moving background and a single glass button in the
+   middle; a slim control row above it. Dark-only by choice: it previews a dark app. */
+:root {
+  color-scheme: dark;
+  --page: #07060d;
+  --ink: #f6f7fc;
+  --ink-dim: rgba(246, 247, 252, 0.66);
+  --ink-faint: rgba(246, 247, 252, 0.4);
+  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--page); color: var(--ink); font-family: var(--font); font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 16px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+button { font: inherit; color: inherit; }
+.top { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; }
+.top h1 { margin: 0; font-family: var(--font-display); font-size: 20px; font-weight: 700; }
+.top p { margin: 2px 0 0; color: var(--ink-dim); font-size: 13px; }
+.opts { display: flex; gap: 8px; flex-wrap: wrap; }
+.pill { display: inline-flex; padding: 3px; border-radius: 999px; background: rgba(255,255,255,0.07); gap: 2px; }
+.pill button { border: 0; background: none; padding: 6px 12px; border-radius: 999px; font-size: 12.5px; font-weight: 600; color: var(--ink-dim); cursor: pointer; }
+.pill button[aria-pressed='true'] { background: rgba(255,255,255,0.16); color: var(--ink); }
+
+.stage { position: relative; flex: 1; min-height: 520px; border-radius: 22px; overflow: hidden; isolation: isolate; touch-action: none; }
+#bg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.hint { position: absolute; left: 0; right: 0; bottom: 16px; text-align: center; font-size: 12.5px; color: rgba(255,255,255,0.7); text-shadow: 0 1px 6px rgba(0,0,0,0.6); pointer-events: none; }
+
+/* ---------- The button ---------- */
+.glass {
+  position: absolute; left: 50%; top: 50%;
+  width: var(--w); height: var(--h); margin: calc(var(--h) / -2) 0 0 calc(var(--w) / -2);
+  border: 0; padding: 0; border-radius: 999px; cursor: grab;
+  background: transparent; color: #fff;
+  display: grid; place-items: center;
+  font-family: var(--font-display); font-size: calc(var(--h) * 0.33); font-weight: 600; letter-spacing: -0.01em;
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.25);
+  transform: translate(var(--x, 0px), var(--y, 0px)) scale(var(--s, 1));
+  transition: transform 0.5s cubic-bezier(.25, 1.6, .45, 1);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22), 0 2px 6px rgba(0, 0, 0, 0.12);
+  -webkit-tap-highlight-color: transparent;
+}
+.glass.dragging { transition: transform 0.12s ease-out; cursor: grabbing; }
+.glass .lens, .glass .spec, .glass .tint { position: absolute; inset: 0; border-radius: inherit; pointer-events: none; }
+/* Liquid Glass: sharp refraction, almost no frost */
+.glass .lens { -webkit-backdrop-filter: blur(1px) saturate(150%) brightness(1.06); backdrop-filter: url(#liquid) saturate(160%) brightness(1.07); }
+.glass .tint { background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02)); box-shadow: inset 0 0 14px rgba(255,255,255,0.10), inset 0 0 3px rgba(255,255,255,0.08); transition: background 0.3s; }
+.glass .spec { width: 100%; height: 100%; transition: opacity 0.3s; }
+.glass .label { position: relative; display: inline-flex; align-items: center; gap: 0.4em; pointer-events: none; }
+.glass .label svg { width: 0.95em; height: 0.95em; }
+.glass:active .tint, .glass.pressed .tint { background: linear-gradient(180deg, rgba(255,255,255,0.2), rgba(255,255,255,0.08)); }
+.glass.pressed { --s: 1.08; }
+.glass:focus-visible { outline: 2px solid #fff; outline-offset: 4px; }
+
+/* Frosted variant for comparison (like the first reference picture) */
+.frost .glass .lens { backdrop-filter: blur(18px) saturate(160%) brightness(1.1); -webkit-backdrop-filter: blur(18px) saturate(160%) brightness(1.1); }
+.frost .glass .tint { background: linear-gradient(180deg, rgba(255,255,255,0.22), rgba(255,255,255,0.10)); }
+
+/* Today's VibSync button for comparison */
+.today .glass .lens { backdrop-filter: blur(20px) saturate(140%); -webkit-backdrop-filter: blur(20px) saturate(140%); }
+.today .glass .tint { background: rgba(10, 12, 24, 0.55); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12); }
+.today .glass .spec { opacity: 0; }
+.today .glass { box-shadow: none; text-shadow: none; }
+
+.note { color: var(--ink-faint); font-size: 12px; line-height: 1.5; margin: 0; max-width: 90ch; }
+@media (max-width: 600px) { .stage { min-height: 460px; } }
+@media (prefers-reduced-motion: reduce) { .glass { transition: none; } }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <filter id="liquid" filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse" x="0" y="0" width="300" height="96" color-interpolation-filters="sRGB">
+    <feImage id="dispImg" x="0" y="0" width="300" height="96" preserveAspectRatio="none" result="map"/>
+    <!-- three slightly different shifts per colour channel: a hint of chromatic aberration at the rim -->
+    <feDisplacementMap in="SourceGraphic" in2="map" class="dm" data-k="1.00" scale="70" xChannelSelector="R" yChannelSelector="G" result="dR"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" class="dm" data-k="0.965" scale="66" xChannelSelector="R" yChannelSelector="G" result="dG"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" class="dm" data-k="0.93" scale="62" xChannelSelector="R" yChannelSelector="G" result="dB"/>
+    <feColorMatrix in="dR" type="matrix" values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="cR"/>
+    <feColorMatrix in="dG" type="matrix" values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0" result="cG"/>
+    <feColorMatrix in="dB" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0" result="cB"/>
+    <feComposite in="cR" in2="cG" operator="arithmetic" k2="1" k3="1" result="rg"/>
+    <feComposite in="rg" in2="cB" operator="arithmetic" k2="1" k3="1" result="rgb"/>
+    <feGaussianBlur in="rgb" stdDeviation="0.5"/>
+  </filter>
+</svg>
+
+<header class="top">
+  <div>
+    <h1>Ein Button in Liquid Glass</h1>
+    <p>Halte den Button gedrückt und zieh ihn über das Bild. Am Rand siehst du, wie das Glas den Hintergrund bricht.</p>
+  </div>
+  <div class="opts">
+    <div class="pill" id="matPill" role="group" aria-label="Material">
+      <button type="button" data-v="liquid" aria-pressed="true">Liquid Glass</button>
+      <button type="button" data-v="frost" aria-pressed="false">Milchglas</button>
+      <button type="button" data-v="today" aria-pressed="false">Heute</button>
+    </div>
+    <div class="pill" id="bgPill" role="group" aria-label="Hintergrund">
+      <button type="button" data-v="waves" aria-pressed="true">Wellen</button>
+      <button type="button" data-v="viz" aria-pressed="false">VibSync-Bild</button>
+    </div>
+  </div>
+</header>
+
+<main class="stage" id="stage">
+  <canvas id="bg"></canvas>
+  <button type="button" class="glass" id="btn" style="--w: 300px; --h: 96px">
+    <span class="lens"></span>
+    <span class="tint"></span>
+    <canvas class="spec" id="spec"></canvas>
+    <span class="label">Button</span>
+  </button>
+  <div class="hint">Klicken: drücken · Gedrückt halten und ziehen: verschieben</div>
+</main>
+<p class="note">Die Lichtbrechung läuft in Chrome und Edge, und damit auch in der VibSync-App, weil Electron auf Chromium aufbaut. Safari und Firefox zeigen nur den Lichtrand ohne Brechung.</p>
+
+<script>
+(() => {
+  const stage = document.getElementById('stage');
+  const btn = document.getElementById('btn');
+  const W = 300, H = 96;
+
+  // ---------- Glass surface ----------
+  // A capsule whose rim is a convex bevel (squircle profile). For every pixel on the bevel we
+  // compute the surface normal, refract a straight-down view ray (Snell, n = 1.5) and store
+  // how far the ray travels sideways. That offset goes into the displacement map (R = x, G = y),
+  // so the backdrop is sampled from further inside: the rim magnifies and bends what is behind.
+  const BEZEL = 22, STRENGTH = 52;
+  const height = (x) => Math.pow(1 - Math.pow(1 - x, 4), 0.25); // 0 at edge, 1 inside
+  function sdf(px, py) { // signed distance to the capsule edge, negative inside
+    const r = H / 2, cx = Math.min(Math.max(px, r), W - r);
+    return Math.hypot(px - cx, py - r) - r;
+  }
+  function build() {
+    const disp = document.createElement('canvas'); disp.width = W; disp.height = H;
+    const dc = disp.getContext('2d'), di = dc.createImageData(W, H);
+    const spec = document.getElementById('spec'); spec.width = W * 2; spec.height = H * 2;
+    const sc = spec.getContext('2d'), si = sc.createImageData(W * 2, H * 2);
+    const vecs = new Float32Array(W * H * 2);
+    let maxMag = 0;
+    const L = [-0.8, -0.6]; // light from the upper left
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const px = x + 0.5, py = y + 0.5, d = -sdf(px, py);
+      let vx = 0, vy = 0;
+      if (d > 0) {
+        // rim: strong bend at the edge that fades out across the bevel (convex lens edge)
+        const t = Math.min(1, d / BEZEL);
+        const rim = Math.pow(1 - t, 2.2);
+        const gx = sdf(px + 0.5, py) - sdf(px - 0.5, py), gy = sdf(px, py + 0.5) - sdf(px, py - 0.5);
+        const gl = Math.hypot(gx, gy) || 1;
+        vx = -gx / gl * rim; vy = -gy / gl * rim;
+        // body: slight magnification, the whole lens pulls content toward its centre
+        vx += (W / 2 - px) / (W / 2) * 0.14; vy += (H / 2 - py) / (H / 2) * 0.14;
+        maxMag = Math.max(maxMag, Math.hypot(vx, vy));
+      }
+      vecs[(y * W + x) * 2] = vx; vecs[(y * W + x) * 2 + 1] = vy;
+    }
+    for (let i = 0; i < W * H; i++) {
+      const k = i * 4;
+      di.data[k] = 128 + Math.round(127 * vecs[i * 2] / maxMag);
+      di.data[k + 1] = 128 + Math.round(127 * vecs[i * 2 + 1] / maxMag);
+      di.data[k + 2] = 128; di.data[k + 3] = 255;
+    }
+    dc.putImageData(di, 0, 0);
+    const fe = document.getElementById('dispImg');
+    fe.setAttribute('href', disp.toDataURL());
+    // feDisplacementMap moves by scale * (value - 0.5): scale is the largest shift in px
+    document.querySelectorAll('.dm').forEach((m) => m.setAttribute('scale', String(STRENGTH * m.dataset.k)));
+
+    // Specular rim at 2x: bright where the bevel faces the light (top left) and, weaker,
+    // on the opposite side where light exits the glass (bottom right). Thin outer line everywhere.
+    const S2 = 2;
+    for (let y = 0; y < H * S2; y++) for (let x = 0; x < W * S2; x++) {
+      const px = (x + 0.5) / S2, py = (y + 0.5) / S2, d = -sdf(px, py);
+      let a = 0;
+      if (d > -0.8 && d < BEZEL) {
+        const gx = sdf(px + 0.5, py) - sdf(px - 0.5, py), gy = sdf(px, py + 0.5) - sdf(px, py - 0.5);
+        const gl = Math.hypot(gx, gy) || 1, nx = gx / gl, ny = gy / gl; // outward normal
+        const facing = nx * L[0] + ny * L[1];
+        // No hard line: light is brightest right at the edge and fades softly inward,
+        // strong where the rim faces the light, weaker opposite, almost gone on the sides.
+        const dd = Math.max(0, d);
+        const rim = Math.exp(-dd / 2.4);
+        const glow = Math.exp(-dd / 10) * 0.32;
+        const dir = Math.pow(Math.max(0, facing), 1.6) + Math.pow(Math.max(0, -facing), 1.6) * 0.6 + 0.10;
+        a = Math.min(1, (rim * 0.8 + glow) * dir);
+        if (d < 0) a *= Math.max(0, 1 + d / 0.8);
+      }
+      const k = (y * W * S2 + x) * 4;
+      si.data[k] = si.data[k + 1] = si.data[k + 2] = 255; si.data[k + 3] = Math.round(a * 255);
+    }
+    sc.putImageData(si, 0, 0);
+  }
+  build();
+
+  // ---------- Backgrounds ----------
+  const bg = document.getElementById('bg'), cx = bg.getContext('2d');
+  let BW = 0, BH = 0, mode = 'waves';
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  function resize() {
+    const r = stage.getBoundingClientRect();
+    BW = bg.width = Math.round(r.width * dpr); BH = bg.height = Math.round(r.height * dpr);
+  }
+  new ResizeObserver(resize).observe(stage);
+
+  function waves(t) {
+    const g = cx.createLinearGradient(0, 0, BW, BH);
+    g.addColorStop(0, '#2a1fb8'); g.addColorStop(0.45, '#3f2fd6'); g.addColorStop(1, '#0b2a8f');
+    cx.fillStyle = g; cx.fillRect(0, 0, BW, BH);
+    // broad soft folds
+    for (let i = 0; i < 5; i++) {
+      cx.beginPath();
+      const off = (i - 2) * BH * 0.18 + Math.sin(t * 0.3 + i) * BH * 0.04;
+      cx.moveTo(-50, BH * 0.95 + off);
+      cx.bezierCurveTo(BW * 0.3, BH * 0.7 + off, BW * 0.55, BH * 0.25 + off, BW + 50, -BH * 0.1 + off);
+      cx.lineTo(BW + 50, BH + 50); cx.lineTo(-50, BH + 50); cx.closePath();
+      cx.fillStyle = `rgba(${i % 2 ? '10,30,120' : '90,70,255'},0.16)`; cx.fill();
+    }
+    // sharp light seams, they show the refraction best
+    for (let i = 0; i < 3; i++) {
+      const off = (i - 1) * BH * 0.22 + Math.sin(t * 0.25 + i * 2) * BH * 0.03;
+      cx.beginPath();
+      cx.moveTo(-50, BH * 1.0 + off);
+      cx.bezierCurveTo(BW * 0.32, BH * 0.72 + off, BW * 0.56, BH * 0.28 + off, BW + 50, -BH * 0.05 + off);
+      cx.strokeStyle = `rgba(190,200,255,${i === 1 ? 0.85 : 0.35})`; cx.lineWidth = (i === 1 ? 2.2 : 1.2) * dpr; cx.stroke();
+    }
+    // a few soft orbs drifting
+    for (let i = 0; i < 4; i++) {
+      const x = BW * (0.2 + 0.6 * (0.5 + 0.5 * Math.sin(t * 0.17 + i * 1.7))), y = BH * (0.25 + 0.5 * (0.5 + 0.5 * Math.cos(t * 0.13 + i * 2.3)));
+      const r = Math.min(BW, BH) * 0.12;
+      const rg = cx.createRadialGradient(x, y, 0, x, y, r);
+      rg.addColorStop(0, 'rgba(120,170,255,0.35)'); rg.addColorStop(1, 'rgba(120,170,255,0)');
+      cx.fillStyle = rg; cx.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+  }
+  const COLS = ['#ff2bd6', '#00e5ff', '#6a00ff', '#ff2f6d', '#00ffb3'];
+  function hexA(h, a) { const n = parseInt(h.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; }
+  function viz(t) {
+    cx.globalCompositeOperation = 'source-over';
+    cx.fillStyle = '#05040a'; cx.fillRect(0, 0, BW, BH);
+    cx.globalCompositeOperation = 'lighter';
+    const beat = 60 / 124, ph = (t % beat) / beat, kick = Math.exp(-ph * 8);
+    for (let i = 0; i < 6; i++) {
+      const a = i * 2.399 + t * 0.15;
+      const x = BW * (0.5 + 0.36 * Math.sin(a + Math.sin(t * 0.2 + i) * 0.8));
+      const y = BH * (0.5 + 0.32 * Math.cos(a * 1.3 + Math.cos(t * 0.17 + i * 2) * 0.8));
+      const r = Math.min(BW, BH) * 0.36 * (1 + kick * 0.18);
+      const g = cx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, hexA(COLS[i % 5], 0.8)); g.addColorStop(0.5, hexA(COLS[i % 5], 0.3)); g.addColorStop(1, hexA(COLS[i % 5], 0));
+      cx.fillStyle = g; cx.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    cx.globalCompositeOperation = 'source-over';
+  }
+  let t0 = performance.now();
+  function frame(now) {
+    const t = (now - t0) / 1000;
+    if (BW) (mode === 'waves' ? waves : viz)(t);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  // ---------- Press and drag ----------
+  let pos = { x: 0, y: 0 }, start = null, moved = false;
+  const apply = () => { btn.style.setProperty('--x', pos.x + 'px'); btn.style.setProperty('--y', pos.y + 'px'); };
+  btn.addEventListener('pointerdown', (e) => {
+    btn.setPointerCapture(e.pointerId);
+    start = { px: e.clientX, py: e.clientY, x: pos.x, y: pos.y }; moved = false;
+    btn.classList.add('pressed');
+  });
+  btn.addEventListener('pointermove', (e) => {
+    if (!start) return;
+    const dx = e.clientX - start.px, dy = e.clientY - start.py;
+    if (!moved && Math.hypot(dx, dy) > 4) { moved = true; btn.classList.add('dragging'); }
+    if (moved) {
+      const r = stage.getBoundingClientRect();
+      pos.x = Math.max(-r.width / 2 + W / 2, Math.min(r.width / 2 - W / 2, start.x + dx));
+      pos.y = Math.max(-r.height / 2 + H / 2, Math.min(r.height / 2 - H / 2, start.y + dy));
+      apply();
+    }
+  });
+  const end = () => { start = null; btn.classList.remove('pressed', 'dragging'); };
+  btn.addEventListener('pointerup', end);
+  btn.addEventListener('pointercancel', end);
+  btn.addEventListener('keydown', (e) => { if (e.key === ' ' || e.key === 'Enter') { btn.classList.add('pressed'); setTimeout(() => btn.classList.remove('pressed'), 180); } });
+
+  // ---------- Options ----------
+  function pill(id, onPick) {
+    const el = document.getElementById(id);
+    el.addEventListener('click', (e) => {
+      const b = e.target.closest('button'); if (!b) return;
+      el.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+      onPick(b.dataset.v);
+    });
+  }
+  pill('matPill', (v) => { stage.classList.toggle('frost', v === 'frost'); stage.classList.toggle('today', v === 'today'); });
+  pill('bgPill', (v) => { mode = v; });
+})();
+</script>

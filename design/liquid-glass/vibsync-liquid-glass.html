@@ -1,0 +1,943 @@
+<title>VibSync Liquid Glass</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: one app window (visualizer full-bleed, glass dock, HUD, now playing, tabbed
+   settings panel) on top, the proposal for the settings menu below it. Dark-only by choice:
+   it is a mockup of a dark app. */
+:root {
+  color-scheme: dark;
+  --void: #05040a;
+  --page: #0b0a12;
+  --ink: #f5f6fb;
+  --ink-dim: rgba(245, 246, 251, 0.68);
+  --ink-faint: rgba(245, 246, 251, 0.42);
+  --rim: rgba(255, 255, 255, 0.55);
+  --tint: rgba(255, 255, 255, 0.07);
+  --tint-strong: rgba(255, 255, 255, 0.16);
+  --shade: rgba(8, 8, 16, 0.28);
+  --hot: #ff4fd8;
+  --warn: #ffb347;
+  --ok: #46e3a0;
+  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif;
+  --mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, monospace;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--page); color: var(--ink); font-family: var(--font); font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 48px;
+}
+button, input { font: inherit; color: inherit; }
+.wrap { max-width: 1320px; margin: 0 auto; display: grid; gap: 22px; }
+.intro { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px 24px; }
+.intro h1 { margin: 0; font-family: var(--font-display); font-size: clamp(22px, 3vw, 30px); font-weight: 700; letter-spacing: -0.01em; text-wrap: balance; }
+.intro p { margin: 4px 0 0; color: var(--ink-dim); max-width: 64ch; line-height: 1.5; }
+.compare { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ---------- App window ---------- */
+.win {
+  position: relative; overflow: hidden; border-radius: 22px; background: var(--void);
+  aspect-ratio: 16 / 10; min-height: 700px; max-width: 100%;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  isolation: isolate;
+}
+#viz { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; mix-blend-mode: screen; }
+
+/* ---------- Liquid Glass material ----------
+   Three layers: refraction of what is behind (SVG displacement, Chromium/Electron only),
+   a very light tint, and a specular rim that is bright top-left and bottom-right. */
+.lg {
+  position: relative; isolation: isolate;
+  background: linear-gradient(160deg, rgba(255,255,255,0.13), rgba(255,255,255,0.04) 45%, rgba(255,255,255,0.02));
+  -webkit-backdrop-filter: blur(3px) saturate(185%) brightness(1.08);
+  backdrop-filter: blur(3px) saturate(185%) brightness(1.08);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.55),
+    inset 0 -1px 1px rgba(255, 255, 255, 0.18),
+    inset 0 0 24px rgba(255, 255, 255, 0.07),
+    0 10px 34px rgba(0, 0, 0, 0.32),
+    0 1px 3px rgba(0, 0, 0, 0.25);
+}
+.refract .lg { backdrop-filter: url(#lensing) blur(2px) saturate(185%) brightness(1.08); }
+.lg::before {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none; z-index: -1;
+  background: linear-gradient(135deg, rgba(255,255,255,0.85), rgba(255,255,255,0.08) 30%, rgba(255,255,255,0) 55%, rgba(255,255,255,0.12) 78%, rgba(255,255,255,0.6));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+}
+.lg::after { /* soft inner sheen, like light caught in a lens */
+  content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: -1;
+  background: radial-gradient(120% 70% at 20% 0%, rgba(255,255,255,0.16), transparent 55%);
+}
+.lg-dense { background: linear-gradient(160deg, rgba(28,26,40,0.55), rgba(16,14,26,0.45)); }
+.refract .lg-dense { backdrop-filter: url(#lensing) blur(18px) saturate(170%) brightness(0.95); }
+.lg-dense { -webkit-backdrop-filter: blur(22px) saturate(170%) brightness(0.95); backdrop-filter: blur(22px) saturate(170%) brightness(0.95); }
+
+/* Old look, for A/B comparison: exactly the current app tokens. */
+.old .lg, .old .lg-dense {
+  background: rgba(10, 12, 24, 0.55); backdrop-filter: blur(20px) saturate(140%); -webkit-backdrop-filter: blur(20px) saturate(140%);
+  box-shadow: none; border: 1px solid rgba(255,255,255,0.12);
+}
+.old .lg-dense { background: rgba(10, 12, 24, 0.82); }
+.old .lg::before, .old .lg::after { display: none; }
+.old .seg .drop { background: #4cc3ff; box-shadow: none; }
+.old .seg button[aria-pressed='true'] { color: #04121c; }
+.old .seg .drop::before, .old .seg .drop::after { display: none; }
+
+/* ---------- Glass controls ---------- */
+.btn {
+  border: 0; border-radius: 999px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; color: var(--ink);
+  transition: transform 0.25s cubic-bezier(.3,1.6,.5,1), background 0.2s;
+}
+.btn:hover { transform: scale(1.04); }
+.btn:active { transform: scale(0.96); }
+.btn.round { padding: 9px; }
+.btn svg { width: 16px; height: 16px; flex: none; }
+:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+/* Segmented control with a sliding glass droplet as the selected state */
+.seg { display: inline-flex; position: relative; padding: 3px; border-radius: 999px; }
+.seg button { position: relative; z-index: 1; border: 0; background: none; padding: 6px 13px; border-radius: 999px; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--ink-dim); transition: color 0.25s; white-space: nowrap; }
+.seg button[aria-pressed='true'] { color: var(--ink); }
+.seg .drop {
+  position: absolute; top: 3px; bottom: 3px; left: 0; width: 0; border-radius: 999px; z-index: 0;
+  background: linear-gradient(170deg, rgba(255,255,255,0.32), rgba(255,255,255,0.12));
+  box-shadow: inset 0 1px 1px rgba(255,255,255,0.8), inset 0 -1px 2px rgba(255,255,255,0.2), 0 4px 14px rgba(0,0,0,0.25);
+  transition: left 0.45s cubic-bezier(.3,1.35,.45,1), width 0.45s cubic-bezier(.3,1.35,.45,1), transform 0.3s;
+}
+.seg .drop.squish { transform: scaleY(0.86) scaleX(1.08); }
+.seg.full { display: flex; }
+.seg.full button { flex: 1; }
+
+/* Colour swatches: colour stays, selection is a glass ring around it */
+.swatches { display: flex; gap: 7px; flex-wrap: wrap; align-items: center; }
+.sw {
+  width: 34px; height: 24px; border-radius: 999px; border: 0; padding: 0; cursor: pointer; position: relative;
+  box-shadow: inset 0 1px 1px rgba(255,255,255,0.45), inset 0 -2px 4px rgba(0,0,0,0.25), 0 2px 6px rgba(0,0,0,0.3);
+  transition: transform 0.3s cubic-bezier(.3,1.6,.5,1);
+}
+.sw:hover { transform: scale(1.1); }
+.sw[aria-pressed='true'] { transform: scale(1.12); }
+.sw[aria-pressed='true']::after {
+  content: ''; position: absolute; inset: -5px; border-radius: 999px;
+  background: linear-gradient(140deg, rgba(255,255,255,0.95), rgba(255,255,255,0.25) 40%, rgba(255,255,255,0.15) 60%, rgba(255,255,255,0.8));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
+  padding: 2px; box-shadow: 0 0 12px rgba(255,255,255,0.35);
+}
+.old .sw[aria-pressed='true']::after { background: #fff; padding: 2px; box-shadow: none; }
+
+/* Switch */
+.switch { width: 46px; height: 28px; border-radius: 999px; border: 0; padding: 0; cursor: pointer; position: relative; flex: none;
+  background: rgba(255,255,255,0.14); box-shadow: inset 0 1px 2px rgba(0,0,0,0.35); transition: background 0.3s; }
+.switch[aria-checked='true'] { background: var(--ok); }
+.switch.warn[aria-checked='true'] { background: var(--hot); }
+.switch i { position: absolute; top: 2px; left: 2px; width: 24px; height: 24px; border-radius: 999px;
+  background: linear-gradient(170deg, #fff, #e8e8f0); box-shadow: 0 2px 6px rgba(0,0,0,0.35), inset 0 -1px 1px rgba(0,0,0,0.1);
+  transition: left 0.4s cubic-bezier(.3,1.5,.5,1), width 0.2s; }
+.switch:active i { width: 30px; }
+.switch[aria-checked='true'] i { left: 20px; }
+.switch[aria-checked='true']:active i { left: 14px; }
+
+/* Slider: glass track, colour fill, glass knob */
+.range { position: relative; height: 26px; display: flex; align-items: center; }
+.range input { -webkit-appearance: none; appearance: none; width: 100%; height: 26px; background: transparent; margin: 0; cursor: pointer; position: relative; z-index: 1; }
+.range .track { position: absolute; left: 0; right: 0; height: 6px; border-radius: 999px; background: rgba(255,255,255,0.12); box-shadow: inset 0 1px 2px rgba(0,0,0,0.4); overflow: hidden; }
+.range .fill { height: 100%; width: var(--p, 50%); border-radius: inherit; background: linear-gradient(90deg, var(--c1, #fff), var(--c2, #fff)); }
+.range input::-webkit-slider-thumb { -webkit-appearance: none; width: 26px; height: 20px; border-radius: 999px;
+  background: linear-gradient(170deg, rgba(255,255,255,0.98), rgba(235,235,245,0.9)); box-shadow: 0 2px 8px rgba(0,0,0,0.4), inset 0 -1px 1px rgba(0,0,0,0.08);
+  transition: transform 0.25s cubic-bezier(.3,1.6,.5,1); }
+.range input:active::-webkit-slider-thumb { transform: scale(1.35, 1.2); background: rgba(255,255,255,0.35); box-shadow: inset 0 1px 1px rgba(255,255,255,0.9), 0 4px 14px rgba(0,0,0,0.3); }
+.range input::-moz-range-thumb { width: 26px; height: 20px; border: 0; border-radius: 999px; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.4); }
+
+/* ---------- HUD, now playing, dock ---------- */
+.hud { position: absolute; top: 18px; left: 18px; display: grid; gap: 10px; z-index: 3; pointer-events: none; }
+.brand { font-family: var(--font-display); font-weight: 700; font-size: 20px; text-shadow: 0 1px 8px rgba(0,0,0,0.4); }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { font-size: 12px; font-weight: 600; padding: 5px 11px; border-radius: 999px; }
+.meters { padding: 10px 14px; border-radius: 18px; display: grid; grid-template-columns: auto 150px; gap: 6px 12px; align-items: center; font-size: 11px; color: var(--ink-dim); }
+.bar { height: 5px; border-radius: 999px; background: rgba(255,255,255,0.12); overflow: hidden; }
+.bar b { display: block; height: 100%; width: 100%; transform-origin: left; transform: scaleX(var(--v, 0)); border-radius: inherit; background: linear-gradient(90deg, var(--m1), var(--m2)); }
+
+.np { position: absolute; top: 16px; right: 16px; width: 300px; display: flex; gap: 12px; align-items: center; padding: 10px 12px; border-radius: 24px; z-index: 3; transition: right 0.45s cubic-bezier(.3,1.2,.5,1); }
+.panel-open .np { right: 400px; }
+.cover { width: 62px; height: 62px; border-radius: 14px; flex: none; background: conic-gradient(from 210deg, var(--c0), var(--c1), var(--c2), var(--c3), var(--c0)); box-shadow: 0 6px 18px rgba(0,0,0,0.45), inset 0 1px 1px rgba(255,255,255,0.4); }
+.np-body { min-width: 0; display: grid; gap: 2px; flex: 1; }
+.np-title { font-family: var(--font-display); font-weight: 700; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.np-artist { font-size: 12px; color: var(--ink-dim); }
+.np-ctl { display: flex; gap: 6px; margin-top: 6px; }
+.np-ctl .btn { padding: 6px; }
+.np-ctl .btn svg { width: 14px; height: 14px; }
+
+.dock { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 999px; z-index: 3; max-width: calc(100% - 32px); flex-wrap: wrap; justify-content: center; transition: left 0.45s cubic-bezier(.3,1.2,.5,1); }
+.panel-open .dock { left: calc((100% - 384px) / 2); max-width: calc(100% - 420px); }
+@media (min-width: 861px) { .dock { flex-wrap: nowrap; gap: 8px; } .dock .sw { width: 26px; height: 22px; } .dock .swatches { gap: 6px; flex-wrap: nowrap; } .dock .seg button { padding: 6px 10px; } }
+.status { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; font-size: 13px; font-weight: 600; padding: 0 6px 0 8px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 10px var(--ok); }
+.vsep { width: 1px; height: 22px; background: rgba(255,255,255,0.18); }
+.btn.on-hot { background: linear-gradient(170deg, #ff7ae4, #e0249f); color: #1a0016; box-shadow: inset 0 1px 1px rgba(255,255,255,0.6), 0 0 22px rgba(255,79,216,0.55); }
+.btn.on-glass { background: rgba(255,255,255,0.28); box-shadow: inset 0 1px 1px rgba(255,255,255,0.85), 0 4px 14px rgba(0,0,0,0.25); }
+
+/* ---------- Settings panel ---------- */
+.panel {
+  position: absolute; top: 12px; right: 12px; bottom: 12px; width: 372px; border-radius: 30px; z-index: 4;
+  display: flex; flex-direction: column; overflow: hidden;
+  transform: translateX(calc(100% + 24px)) scale(0.96); opacity: 0;
+  transition: transform 0.55s cubic-bezier(.3,1.25,.45,1), opacity 0.35s;
+}
+.panel-open .panel { transform: none; opacity: 1; }
+.panel.peek > *:not(.p-body), .panel.peek .p-body > *:not(.peek-keep) { opacity: 0.0; }
+.panel.peek { background: transparent; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.panel.peek::before, .panel.peek::after { opacity: 0; }
+.panel > *, .p-body > * { transition: opacity 0.25s; }
+.p-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 16px 10px 20px; }
+.p-head h2 { margin: 0; font-family: var(--font-display); font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
+.p-tabs { padding: 0 14px 10px; }
+.p-tabs .seg button { padding: 7px 4px; font-size: 12px; }
+.p-body { flex: 1; overflow-y: auto; padding: 4px 14px 16px; display: grid; gap: 12px; align-content: start; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.2) transparent; }
+.group { border-radius: 20px; padding: 12px 14px; display: grid; gap: 12px; background: rgba(255,255,255,0.05); box-shadow: inset 0 1px 0 rgba(255,255,255,0.08); }
+.old .group { background: none; box-shadow: none; padding: 0 4px; border-bottom: 1px solid rgba(255,255,255,0.12); border-radius: 0; padding-bottom: 12px; }
+.g-title { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-faint); display: flex; justify-content: space-between; align-items: center; }
+.g-title button { background: none; border: 0; color: var(--ink-faint); font-size: 11px; cursor: pointer; letter-spacing: 0; text-transform: none; font-weight: 600; }
+.g-title button:hover { color: var(--ink); }
+.field { display: grid; gap: 6px; }
+.f-row { display: grid; grid-template-columns: 44px 1fr; gap: 12px; align-items: center; }
+.f-head { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; font-weight: 600; }
+.f-head output { font-family: var(--mono); font-size: 12px; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+.hint { margin: 0; font-size: 12px; line-height: 1.45; color: var(--ink-faint); }
+.line { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; font-weight: 600; }
+
+/* Mini previews: small live pictures next to a setting */
+.pv { width: 44px; height: 44px; border-radius: 14px; background: rgba(0,0,0,0.35); box-shadow: inset 0 1px 2px rgba(0,0,0,0.5), inset 0 -1px 0 rgba(255,255,255,0.08); position: relative; overflow: hidden; flex: none; }
+.pv canvas { width: 100%; height: 100%; display: block; }
+.old .pv { display: none; }
+.old .f-row { grid-template-columns: 1fr; }
+
+/* Scene cards and style/symmetry cards */
+.cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.cards.four { grid-template-columns: repeat(4, 1fr); }
+.card { border: 0; padding: 0; background: none; cursor: pointer; display: grid; gap: 6px; text-align: center; font-size: 12px; font-weight: 600; color: var(--ink-dim); }
+.card .thumb { aspect-ratio: 4 / 3; border-radius: 14px; position: relative; overflow: hidden; box-shadow: inset 0 1px 1px rgba(255,255,255,0.3), 0 3px 10px rgba(0,0,0,0.35); transition: transform 0.3s cubic-bezier(.3,1.6,.5,1); }
+.card .thumb canvas { width: 100%; height: 100%; display: block; }
+.card:hover .thumb { transform: scale(1.04); }
+.card[aria-pressed='true'] { color: var(--ink); }
+.card[aria-pressed='true'] .thumb { transform: scale(1.04); box-shadow: 0 0 0 2px rgba(255,255,255,0.9), 0 0 18px rgba(255,255,255,0.3), 0 3px 10px rgba(0,0,0,0.35); }
+.scenes { display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 6px; margin: 0 -2px; scrollbar-width: none; }
+.scenes .card { flex: 0 0 92px; }
+
+/* Band routing: what each frequency band does to the picture */
+.route { display: grid; grid-template-columns: 58px 1fr; gap: 4px 10px; align-items: center; }
+.route .band { font-size: 12px; font-weight: 700; display: grid; gap: 4px; }
+.route .band .bar { width: 100%; }
+.route .tgt { display: grid; gap: 2px; }
+.route .tgt .f-head { font-size: 12px; }
+
+.warnbox { border-radius: 14px; padding: 10px 12px; font-size: 12px; line-height: 1.45; color: #ffd9a8; background: rgba(255,179,71,0.1); box-shadow: inset 0 0 0 1px rgba(255,179,71,0.3); }
+.list { display: grid; }
+.list .line { padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.08); font-weight: 500; }
+.list .line:last-child { border-bottom: 0; }
+.list .val { color: var(--ink-faint); font-weight: 500; display: inline-flex; align-items: center; gap: 4px; }
+.leds { display: grid; grid-template-columns: repeat(24, 1fr); gap: 3px; padding: 10px; border-radius: 14px; background: rgba(0,0,0,0.35); }
+.leds i { height: 14px; border-radius: 4px; background: var(--c, #333); box-shadow: 0 0 8px var(--c, transparent); }
+.more { border: 0; background: none; color: var(--ink-dim); font-size: 12px; font-weight: 600; cursor: pointer; padding: 2px 0; justify-self: start; }
+.more:hover { color: var(--ink); }
+
+/* ---------- Proposal below the window ---------- */
+.notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+.note { border-radius: 20px; padding: 18px 20px; background: #13121c; box-shadow: inset 0 1px 0 rgba(255,255,255,0.06); display: grid; gap: 8px; align-content: start; min-width: 0; }
+.note h3 { margin: 0; font-family: var(--font-display); font-size: 16px; font-weight: 700; text-wrap: balance; }
+.note p, .note li { margin: 0; color: var(--ink-dim); line-height: 1.55; font-size: 13.5px; }
+.note ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.note .tag { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-faint); }
+.map { overflow-x: auto; }
+.map table { border-collapse: collapse; width: 100%; font-size: 13px; min-width: 560px; }
+.map th, .map td { text-align: left; padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.08); vertical-align: top; color: var(--ink-dim); }
+.map th { color: var(--ink); font-weight: 700; white-space: nowrap; }
+.legal { color: var(--ink-faint); font-size: 12px; line-height: 1.5; }
+
+@media (max-width: 860px) {
+  .win { aspect-ratio: auto; min-height: 860px; }
+  .panel { left: 10px; right: 10px; width: auto; top: auto; height: 62%; }
+  .panel-open .np, .np { right: 12px; width: calc(100% - 24px); max-width: 320px; top: 120px; }
+  .panel-open .dock { left: 50%; }
+  .hud .meters { display: none; }
+  .dock { bottom: 12px; border-radius: 26px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; }
+}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <filter id="lensing" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+    <feImage id="lensMap" x="0" y="0" width="100%" height="100%" preserveAspectRatio="none" result="map"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="38" xChannelSelector="R" yChannelSelector="G"/>
+  </filter>
+</svg>
+
+<div class="wrap">
+  <header class="intro">
+    <div>
+      <h1>VibSync im Liquid-Glass-Look</h1>
+      <p>Klickbares Beispiel. Das Bild dahinter reagiert auf einen simulierten 124-BPM-Beat und auf die Regler im Menü. Zieh einen Regler: das Menü wird durchsichtig, damit du die Wirkung im Bild siehst.</p>
+    </div>
+    <div class="compare" role="group" aria-label="Vergleich">
+      <div class="seg lg" id="cmpSeg"></div>
+    </div>
+  </header>
+
+  <section class="win panel-open refract" id="win" aria-label="App-Vorschau">
+    <canvas id="viz"></canvas>
+    <div class="flash" id="flash"></div>
+
+    <div class="hud">
+      <div class="brand">VibSync</div>
+      <div class="chips">
+        <span class="chip lg">Groove</span>
+        <span class="chip lg">124 BPM</span>
+      </div>
+      <div class="meters lg" id="hudMeters">
+        <span>Bass</span><div class="bar"><b data-band="bass"></b></div>
+        <span>Mitte</span><div class="bar"><b data-band="mid"></b></div>
+        <span>Höhen</span><div class="bar"><b data-band="high"></b></div>
+      </div>
+    </div>
+
+    <div class="np lg" aria-label="Läuft gerade">
+      <div class="cover" id="cover"></div>
+      <div class="np-body">
+        <div class="np-title">Midnight Arcade</div>
+        <div class="np-artist">Beispiel-Künstler · Spotify</div>
+        <div class="np-ctl">
+          <button class="btn round lg" aria-label="Zurück"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
+          <button class="btn round on-glass" aria-label="Pause"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg></button>
+          <button class="btn round lg" aria-label="Weiter"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></button>
+        </div>
+      </div>
+    </div>
+
+    <nav class="dock lg" aria-label="Schnellleiste">
+      <span class="status"><span class="dot"></span>Desktop-Audio</span>
+      <span class="vsep"></span>
+      <div class="seg" id="dockStyle"></div>
+      <div class="swatches" id="dockSwatches"></div>
+      <span class="vsep"></span>
+      <button class="btn lg" id="strobeBtn" aria-pressed="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></svg>Strobe</button>
+      <button class="btn on-glass" id="setBtn" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Einstellungen</button>
+      <button class="btn round lg" aria-label="Vollbild"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+    </nav>
+
+    <aside class="panel lg lg-dense" id="panel" aria-label="Einstellungen">
+      <div class="p-head">
+        <h2>Einstellungen</h2>
+        <button class="btn round lg" id="closeBtn" aria-label="Schließen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      </div>
+      <div class="p-tabs"><div class="seg full lg" id="tabs"></div></div>
+      <div class="p-body" id="pbody"></div>
+    </aside>
+  </section>
+
+  <section class="notes" aria-label="Vorschlag">
+    <article class="note">
+      <span class="tag">Material</span>
+      <h3>Was Liquid Glass hier ausmacht</h3>
+      <ul>
+        <li>Kaum Milchglas: das Bild dahinter bleibt scharf und wird an den Rändern verzerrt wie durch eine Linse.</li>
+        <li>Heller Lichtrand oben links und unten rechts statt einer grauen Linie.</li>
+        <li>Ausgewählt heißt: ein Glastropfen, der zur Auswahl gleitet und dabei kurz nachfedert. Kein Blau mehr.</li>
+        <li>Farben bleiben Farben: Paletten, Cover und Schalter im An-Zustand behalten ihre Farbe, nur der Rahmen ist Glas.</li>
+        <li>Die Lichtbrechung braucht Chromium. Electron ist Chromium, in der App klappt das also überall.</li>
+      </ul>
+    </article>
+    <article class="note">
+      <span class="tag">Struktur</span>
+      <h3>Fünf Tabs statt einer langen Liste</h3>
+      <ul>
+        <li><b>Bild</b>: Stil, Farben, Größe, Form, Nachleuchten</li>
+        <li><b>Reaktion</b>: was Bass, Mitten und Höhen bewirken, Kick, Tempo</li>
+        <li><b>Effekte</b>: Symmetrie, Drops, Strobe, Automatik</li>
+        <li><b>Licht</b>: Govee-Lichter mit Vorschau des Streifens</li>
+        <li><b>System</b>: Audio, Musik, Anzeige, Tastenkürzel</li>
+      </ul>
+      <p>Szenen stehen als Bildkarten ganz oben, sichtbar in jedem Tab. Seltene Regler liegen hinter „Mehr“.</p>
+    </article>
+    <article class="note">
+      <span class="tag">Feedback</span>
+      <h3>Sehen, was ein Regler macht</h3>
+      <ul>
+        <li>Mini-Vorschau neben wichtigen Reglern, die live mitspielt (Puls, Nachleuchten, Glättung, Form).</li>
+        <li>Beim Ziehen wird das Menü durchsichtig, nur der Regler bleibt. Du siehst die Wirkung im echten Bild.</li>
+        <li>Pegel direkt an den Bass-, Mitten- und Höhen-Reglern: du siehst, welches Band gerade wie viel antreibt.</li>
+        <li>Stil- und Symmetrie-Wahl als Bildkarten statt Text.</li>
+      </ul>
+    </article>
+  </section>
+
+  <section class="note map" aria-label="Wohin die heutigen Einstellungen wandern">
+    <span class="tag">Zuordnung</span>
+    <h3>Wohin die heutigen 9 Abschnitte wandern</h3>
+    <table>
+      <thead><tr><th>Heute</th><th>Neu</th><th>Was sich ändert</th></tr></thead>
+      <tbody>
+        <tr><td>Szenen</td><td>Oben, in jedem Tab</td><td>Karten mit kleinem Vorschaubild statt Textknöpfen</td></tr>
+        <tr><td>Bild</td><td>Bild</td><td>Farbton, Farbwanderung, Randabdunklung hinter „Mehr“</td></tr>
+        <tr><td>Symmetrie</td><td>Effekte</td><td>Vier Bildkarten statt Auswahlliste</td></tr>
+        <tr><td>Bewegung &amp; Reaktion</td><td>Reaktion</td><td>Band-Regler mit Live-Pegel, Kick und Glättung mit Vorschau</td></tr>
+        <tr><td>Drops &amp; Strobe</td><td>Effekte</td><td>Strobe-Details erst nach dem Einschalten, Warnung als Kasten</td></tr>
+        <tr><td>Automatik</td><td>Effekte</td><td>Unverändert, nur kompakter</td></tr>
+        <tr><td>Audio, Musik, Anzeige</td><td>System</td><td>Liste im iOS-Einstellungen-Stil, Fachregler hinter „Mehr“</td></tr>
+        <tr><td>Licht</td><td>Licht</td><td>Vorschau des Streifens mit den aktuellen Farben</td></tr>
+      </tbody>
+    </table>
+    <p class="legal">Nur ein Beispiel im Browser: Regler und Texte stammen aus der echten App, das Bild ist eine vereinfachte Nachbildung des Minimal-Stils. Die Lichtbrechung zeigt sich in Chrome und Edge, Safari und Firefox zeigen nur das Glas ohne Verzerrung.</p>
+  </section>
+</div>
+
+<script>
+(() => {
+  const $ = (s, r = document) => r.querySelector(s);
+  const win = $('#win');
+  const PALETTES = [
+    { id: 'neon', name: 'Neon Club', cols: ['#ff2bd6', '#00e5ff', '#6a00ff', '#ff2f6d', '#00ffb3'] },
+    { id: 'sunset', name: 'Sunset', cols: ['#ff6a00', '#ff2e63', '#ffc93c', '#b4009e', '#ff8f6b'] },
+    { id: 'ocean', name: 'Ocean', cols: ['#0047ff', '#00d4ff', '#00ffc8', '#3b1cff', '#0a8bff'] },
+    { id: 'aurora', name: 'Aurora', cols: ['#21ff9a', '#00c2ff', '#9d4dff', '#ff4fd8', '#1affd5'] },
+    { id: 'lava', name: 'Lava', cols: ['#ff1e00', '#ff8a00', '#ffd000', '#c4002f', '#6d00a8'] },
+    { id: 'matrix', name: 'Matrix', cols: ['#00ff66', '#00cc44', '#33ff88', '#008833', '#b6ff3b'] },
+    { id: 'mono', name: 'Mono', cols: ['#7a2bff', '#b58cff', '#4a12d6', '#9b5cff', '#2d0b8f'] },
+  ];
+  const S = {
+    style: 'minimal', palette: 'neon', size: 1, form: 1, trails: 0.5, brightness: 1, saturation: 1,
+    hueDrift: 0.3, vignette: 0.5, speed: 1, reactivity: 1, beatPulse: 1, bassImpact: 1, midImpact: 1,
+    highImpact: 1, smoothing: 1, symmetry: 'off', strobe: false, dropDetection: true, lights: true, lightSpread: 0.5,
+    tab: 'look', more: false,
+  };
+  const cols = () => PALETTES.find((p) => p.id === S.palette).cols;
+  const grad = (c) => `linear-gradient(90deg, ${c.slice(0, 4).join(', ')})`;
+
+  // ---------- Segmented control with sliding droplet ----------
+  function segmented(el, options, get, set) {
+    el.innerHTML = '';
+    const drop = document.createElement('span');
+    drop.className = 'drop';
+    el.appendChild(drop);
+    const btns = options.map((o) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.textContent = o.name;
+      b.addEventListener('click', () => { set(o.id); update(true); });
+      el.appendChild(b);
+      return [o.id, b];
+    });
+    function update(anim) {
+      btns.forEach(([id, b]) => b.setAttribute('aria-pressed', String(get() === id)));
+      const cur = btns.find(([id]) => id === get());
+      if (!cur) return;
+      drop.style.left = cur[1].offsetLeft + 'px';
+      drop.style.width = cur[1].offsetWidth + 'px';
+      if (anim) { drop.classList.add('squish'); setTimeout(() => drop.classList.remove('squish'), 180); }
+    }
+    requestAnimationFrame(() => update(false));
+    window.addEventListener('resize', () => update(false));
+    el._update = update;
+    return update;
+  }
+
+  const STYLES = [{ id: 'minimal', name: 'Minimal' }, { id: 'flat', name: 'Flächen' }, { id: 'glass', name: 'Glas' }];
+  const dockStyle = segmented($('#dockStyle'), STYLES, () => S.style, (v) => { S.style = v; renderPanel(); });
+
+  function renderSwatches(el) {
+    el.innerHTML = '';
+    PALETTES.forEach((p) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'sw'; b.title = p.name; b.setAttribute('aria-label', 'Palette ' + p.name);
+      b.style.background = grad(p.cols);
+      b.setAttribute('aria-pressed', String(S.palette === p.id));
+      b.addEventListener('click', () => { S.palette = p.id; refreshPalette(); });
+      el.appendChild(b);
+    });
+  }
+  function refreshPalette() {
+    document.querySelectorAll('.swatches').forEach((el) => {
+      [...el.children].forEach((b, i) => b.setAttribute('aria-pressed', String(PALETTES[i].id === S.palette)));
+    });
+    const c = cols();
+    const cover = $('#cover');
+    c.slice(0, 4).forEach((x, i) => cover.style.setProperty('--c' + i, x));
+    document.documentElement.style.setProperty('--m1', c[1]);
+    document.documentElement.style.setProperty('--m2', c[0]);
+    document.querySelectorAll('.range').forEach((r) => { r.style.setProperty('--c1', c[1]); r.style.setProperty('--c2', c[0]); });
+  }
+  renderSwatches($('#dockSwatches'));
+
+  // Compare old/new and refraction
+  const cmp = { v: 'new' };
+  segmented($('#cmpSeg'), [{ id: 'new', name: 'Liquid Glass' }, { id: 'flat', name: 'Ohne Lichtbrechung' }, { id: 'old', name: 'Heutiger Stil' }],
+    () => cmp.v, (v) => {
+      cmp.v = v;
+      win.classList.toggle('old', v === 'old');
+      win.classList.toggle('refract', v === 'new');
+      document.querySelectorAll('.seg').forEach((s) => s._update && s._update(false));
+    });
+
+  // Panel open/close
+  const setBtn = $('#setBtn');
+  const setPanel = (open) => {
+    win.classList.toggle('panel-open', open);
+    setBtn.setAttribute('aria-pressed', String(open));
+    setBtn.className = open ? 'btn on-glass' : 'btn lg';
+  };
+  setBtn.addEventListener('click', () => setPanel(!win.classList.contains('panel-open')));
+  $('#closeBtn').addEventListener('click', () => setPanel(false));
+  const strobeBtn = $('#strobeBtn');
+  strobeBtn.addEventListener('click', () => { S.strobe = !S.strobe; syncStrobe(); renderPanel(); });
+  function syncStrobe() { strobeBtn.setAttribute('aria-pressed', String(S.strobe)); strobeBtn.className = S.strobe ? 'btn on-hot' : 'btn lg'; }
+
+  // ---------- Panel content ----------
+  const TABS = [{ id: 'look', name: 'Bild' }, { id: 'react', name: 'Reaktion' }, { id: 'fx', name: 'Effekte' }, { id: 'light', name: 'Licht' }, { id: 'sys', name: 'System' }];
+  segmented($('#tabs'), TABS, () => S.tab, (v) => { S.tab = v; S.more = false; renderPanel(); $('#pbody').scrollTop = 0; });
+
+  const pct = (v) => Math.round(v * 100) + ' %';
+  const times = (v) => v.toFixed(2).replace('.', ',') + '×';
+  const SCENES = [
+    { id: 'club', name: 'Club', pal: 'neon', v: { style: 'minimal', palette: 'neon', speed: 1, trails: 0.5, beatPulse: 1, symmetry: 'off' } },
+    { id: 'chill', name: 'Chill Lounge', pal: 'ocean', v: { style: 'flat', palette: 'ocean', speed: 0.7, trails: 1.1, beatPulse: 0.6, symmetry: 'off' } },
+    { id: 'rave', name: 'Rave', pal: 'neon', v: { style: 'glass', palette: 'neon', speed: 1.3, beatPulse: 1.6, trails: 0.3, saturation: 1.15, symmetry: 'off' } },
+    { id: 'kaleido', name: 'Kaleidoskop', pal: 'aurora', v: { style: 'flat', palette: 'aurora', symmetry: 'kaleido', speed: 1 } },
+    { id: 'ambient', name: 'Sunset Ambient', pal: 'sunset', v: { style: 'minimal', palette: 'sunset', speed: 0.6, size: 1.3, beatPulse: 0.5 } },
+  ];
+  let scene = 'club';
+
+  const thumbs = []; // {canvas, kind, opts}
+  const previews = []; // {canvas, draw}
+
+  function thumb(kind, opts) {
+    const c = document.createElement('canvas'); c.width = 120; c.height = 90;
+    thumbs.push({ c, kind, opts });
+    return c;
+  }
+  function preview(draw) {
+    const d = document.createElement('div'); d.className = 'pv';
+    const c = document.createElement('canvas'); c.width = 88; c.height = 88; d.appendChild(c);
+    previews.push({ c, draw });
+    return d;
+  }
+
+  function el(tag, cls, html) { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
+
+  function group(title, resetKeys) {
+    const g = el('div', 'group');
+    const t = el('div', 'g-title', `<span>${title}</span>`);
+    if (resetKeys) {
+      const b = el('button', '', 'Zurücksetzen'); b.type = 'button';
+      b.addEventListener('click', () => { Object.assign(S, Object.fromEntries(resetKeys.map((k) => [k, DEF[k]]))); renderPanel(); refreshPalette(); });
+      t.appendChild(b);
+    }
+    g.appendChild(t);
+    return g;
+  }
+  function range(key, label, min, max, step, fmt, hint, pv) {
+    const f = el('div', 'field');
+    const head = el('div', 'f-head', `<span>${label}</span><output>${fmt(S[key])}</output>`);
+    const r = el('div', 'range', '<div class="track"><div class="fill"></div></div>');
+    const inp = document.createElement('input');
+    inp.type = 'range'; inp.min = min; inp.max = max; inp.step = step; inp.value = S[key]; inp.id = 'r-' + key;
+    inp.setAttribute('aria-label', label);
+    r.appendChild(inp);
+    const c = cols(); r.style.setProperty('--c1', c[1]); r.style.setProperty('--c2', c[0]);
+    const setP = () => r.style.setProperty('--p', ((S[key] - min) / (max - min)) * 100 + '%');
+    setP();
+    inp.addEventListener('input', () => { S[key] = parseFloat(inp.value); head.querySelector('output').textContent = fmt(S[key]); setP(); });
+    // Peek: while dragging, only this control stays visible so the picture shows the effect
+    const panel = $('#panel');
+    const start = () => { panel.classList.add('peek'); g.classList.add('peek-keep'); [...g.children].forEach((ch) => { ch.style.opacity = ch.contains(wrap) ? "1" : "0"; }); g.style.background = 'transparent'; g.style.boxShadow = 'none'; };
+    const end = () => { panel.classList.remove('peek'); g.classList.remove('peek-keep'); [...g.children].forEach((ch) => { ch.style.opacity = ''; }); g.style.background = ''; g.style.boxShadow = ''; };
+    let g;
+    inp.addEventListener('pointerdown', () => { g = wrap.closest('.group'); start(); });
+    inp.addEventListener('pointerup', () => g && end());
+    inp.addEventListener('pointercancel', () => g && end());
+    inp.addEventListener('blur', () => g && end());
+    f.append(head, r);
+    if (hint) f.appendChild(el('p', 'hint', hint));
+    let wrap = f;
+    if (pv) { wrap = el('div', 'f-row'); wrap.append(preview(pv), f); }
+    return wrap;
+  }
+  function toggle(key, label, hint, warn, after) {
+    const f = el('div', 'field');
+    const line = el('div', 'line', `<span>${label}</span>`);
+    const b = el('button', 'switch' + (warn ? ' warn' : ''), '<i></i>');
+    b.type = 'button'; b.setAttribute('role', 'switch'); b.setAttribute('aria-checked', String(S[key])); b.setAttribute('aria-label', label);
+    b.addEventListener('click', () => { S[key] = !S[key]; b.setAttribute('aria-checked', String(S[key])); if (key === 'strobe') syncStrobe(); if (after) setTimeout(renderPanel, 380); });
+    line.appendChild(b); f.appendChild(line);
+    if (hint) f.appendChild(el('p', 'hint', hint));
+    return f;
+  }
+  function cardRow(options, key, kind, four) {
+    const row = el('div', 'cards' + (four ? ' four' : ''));
+    options.forEach((o) => {
+      const b = el('button', 'card'); b.type = 'button';
+      b.setAttribute('aria-pressed', String(S[key] === o.id));
+      const th = el('div', 'thumb'); th.appendChild(thumb(kind, o));
+      b.append(th, document.createTextNode(o.name));
+      b.addEventListener('click', () => { S[key] = o.id; if (key === 'style') dockStyle(true); renderPanel(); });
+      row.appendChild(b);
+    });
+    return row;
+  }
+
+  const DEF = { ...S };
+
+  function renderPanel() {
+    thumbs.length = 0; previews.length = 0;
+    const body = $('#pbody'); body.innerHTML = '';
+
+    // Scenes, always on top
+    const sg = group('Szenen');
+    const sr = el('div', 'scenes');
+    SCENES.forEach((sc) => {
+      const b = el('button', 'card'); b.type = 'button'; b.setAttribute('aria-pressed', String(scene === sc.id));
+      const th = el('div', 'thumb'); th.appendChild(thumb('scene', sc));
+      b.append(th, document.createTextNode(sc.name));
+      b.addEventListener('click', () => { scene = sc.id; Object.assign(S, DEF, { tab: S.tab }, sc.v); dockStyle(true); refreshPalette(); syncStrobe(); renderPanel(); });
+      sr.appendChild(b);
+    });
+    sg.appendChild(sr);
+    body.appendChild(sg);
+
+    if (S.tab === 'look') {
+      const g1 = group('Stil und Farben', ['style', 'palette']);
+      g1.appendChild(cardRow(STYLES, 'style', 'style'));
+      const sw = el('div', 'swatches'); renderSwatches(sw); g1.appendChild(sw);
+      body.appendChild(g1);
+      const g2 = group('Form', ['size', 'form', 'trails']);
+      g2.append(
+        range('size', 'Größe', 0.5, 2, 0.01, pct, null, pvSize),
+        range('form', 'Verformung', 0, 2, 0.01, pct, 'Wie stark sich die Formen verbiegen und verwirbeln', pvForm),
+        range('trails', 'Nachleuchten', 0, 1.2, 0.01, pct, 'Wie lange Farben nachglühen. Neues erscheint trotzdem sofort', pvTrails),
+      );
+      body.appendChild(g2);
+      const g3 = group('Farbe', ['brightness', 'saturation', 'hueDrift', 'vignette']);
+      g3.append(range('brightness', 'Helligkeit', 0.4, 1.6, 0.01, pct), range('saturation', 'Sättigung', 0, 1.8, 0.01, pct, null, pvSat));
+      if (S.more) g3.append(range('hueDrift', 'Farbwanderung', 0, 1, 0.01, pct, 'Aus: Palette bleibt fest. Hoch: Farben wandern langsam durch den Farbkreis'), range('vignette', 'Randabdunklung', 0, 1, 0.01, pct));
+      const m = el('button', 'more', S.more ? 'Weniger anzeigen' : 'Mehr: Farbton, Farbwanderung, Randabdunklung'); m.type = 'button';
+      m.addEventListener('click', () => { S.more = !S.more; renderPanel(); });
+      g3.appendChild(m);
+      body.appendChild(g3);
+    }
+
+    if (S.tab === 'react') {
+      const g1 = group('Was die Musik bewirkt', ['bassImpact', 'midImpact', 'highImpact']);
+      g1.appendChild(el('p', 'hint', 'Links siehst du, wie laut das Band gerade ist. Rechts stellst du ein, wie stark es das Bild bewegt.'));
+      [['bass', 'Bass', 'bassImpact', 'Größe und Puls'], ['mid', 'Mitten', 'midImpact', 'Form und Fluss'], ['high', 'Höhen', 'highImpact', 'Funkeln']].forEach(([band, name, key, what]) => {
+        const row = el('div', 'route');
+        row.appendChild(el('div', 'band', `<span>${name}</span><div class="bar"><b data-band="${band}"></b></div>`));
+        const t = range(key, '→ ' + what, 0, 2, 0.01, pct);
+        t.classList.add('tgt');
+        row.appendChild(t);
+        g1.appendChild(row);
+      });
+      body.appendChild(g1);
+      const g2 = group('Schlag und Tempo', ['beatPulse', 'smoothing', 'speed', 'reactivity']);
+      g2.append(
+        range('beatPulse', 'Kick-Puls', 0, 2.5, 0.01, pct, 'Wie stark das Bild bei jedem Kick pulsiert', pvKick),
+        range('smoothing', 'Glättung', 0.4, 2.5, 0.01, times, 'Wie weich das Bild nach jedem Schlag ausklingt. Der Schlag selbst kommt immer sofort', pvSmooth),
+        range('speed', 'Grundtempo', 0.2, 2.5, 0.01, times, null, pvSpeed),
+        range('reactivity', 'Reaktion gesamt', 0, 2, 0.01, pct, '0 macht das Bild unabhängig von der Musik'),
+      );
+      body.appendChild(g2);
+    }
+
+    if (S.tab === 'fx') {
+      const g1 = group('Symmetrie', ['symmetry']);
+      g1.appendChild(cardRow([{ id: 'off', name: 'Aus' }, { id: 'mirror', name: 'Spiegel' }, { id: 'quad', name: 'Vierfach' }, { id: 'kaleido', name: 'Kaleido' }], 'symmetry', 'sym', true));
+      body.appendChild(g1);
+      const g2 = group('Drops und Strobe');
+      g2.appendChild(toggle('dropDetection', 'Drops erkennen', 'Der Moment, in dem nach einem Breakdown der Bass zurückkommt. Dann springen Farben und Tempo.'));
+      g2.appendChild(toggle('strobe', 'Strobe', null, true, true));
+      if (S.strobe) {
+        const sm = el('div', 'seg full lg'); g2.appendChild(sm);
+        const st = { v: 'drop' };
+        segmented(sm, [{ id: 'drop', name: 'Nur bei Drops' }, { id: 'always', name: 'Durchgehend' }], () => st.v, (v) => { st.v = v; });
+      }
+      g2.appendChild(el('div', 'warnbox', 'Schnelle Lichtblitze. Nicht geeignet bei Lichtempfindlichkeit oder Epilepsie. Die Sicherheitsgrenze von 3 Blitzen pro Sekunde gilt für Bild und Lichter.'));
+      body.appendChild(g2);
+      const g3 = group('Automatik');
+      const am = el('div', 'seg full lg'); g3.appendChild(am);
+      const au = { v: 'off' };
+      segmented(am, [{ id: 'off', name: 'Aus' }, { id: 'palette', name: 'Palette' }, { id: 'style', name: 'Stil' }, { id: 'both', name: 'Beides' }], () => au.v, (v) => { au.v = v; });
+      g3.appendChild(el('p', 'hint', 'Wechselt bei Drops oder nach einer Zeit. Übergang 2 s.'));
+      body.appendChild(g3);
+    }
+
+    if (S.tab === 'light') {
+      const g1 = group('Govee-Lichter');
+      g1.appendChild(toggle('lights', 'Lichter steuern', 'Die Lichter leuchten mit der Musik und den Farben des Bildes.'));
+      const leds = el('div', 'leds'); leds.id = 'leds';
+      for (let i = 0; i < 24; i++) leds.appendChild(document.createElement('i'));
+      g1.appendChild(leds);
+      g1.appendChild(el('p', 'hint', 'So sieht dein Streifen gerade aus. Bewegt sich mit den Reglern unten.'));
+      g1.appendChild(range('lightSpread', 'Farbverlauf', 0, 1, 0.01, pct, 'Links: ganzer Streifen in einer Farbe. Rechts: mehrere Farben nebeneinander'));
+      body.appendChild(g1);
+      const g2 = group('Geräte');
+      const list = el('div', 'list');
+      list.innerHTML = '<div class="line"><span>H6199 · 192.168.178.45</span><span class="val">Segmente ›</span></div><div class="line"><span>H6072 · 192.168.178.52</span><span class="val">Eine Farbe ›</span></div>';
+      g2.appendChild(list);
+      body.appendChild(g2);
+    }
+
+    if (S.tab === 'sys') {
+      const rows = (items) => { const l = el('div', 'list'); l.innerHTML = items.map(([a, b]) => `<div class="line"><span>${a}</span><span class="val">${b} ›</span></div>`).join(''); return l; };
+      const g1 = group('Audio'); g1.appendChild(rows([['Quelle', 'Desktop-Audio'], ['Auto-Pegel', 'An'], ['Bild verzögern', '0 ms'], ['Fachregler', 'Dynamik, Stille, Kick']])); body.appendChild(g1);
+      const g2 = group('Musik'); g2.appendChild(rows([['Song anzeigen', 'Automatisch'], ['Cover-Farben', 'Aus']])); body.appendChild(g2);
+      const g3 = group('Anzeige'); g3.appendChild(rows([['Qualität', 'Automatisch'], ['Bildrate', 'Wie der Bildschirm'], ['Menü ausblenden nach', '3 s'], ['Tastenkürzel', '']])); body.appendChild(g3);
+    }
+
+    refreshPalette();
+  }
+
+  // ---------- Simulated music: 124 BPM groove ----------
+  const BPM = 124, beat = 60 / BPM;
+  const A = { kick: 0, bass: 0, mid: 0, high: 0, env: 0, t: 0 };
+  function audio(t) {
+    const ph = (t % beat) / beat;
+    const bar = Math.floor(t / beat) % 16;
+    const breakdown = Math.floor(t / (beat * 32)) % 4 === 3; // every 4th 8-bar phrase: no kick
+    const k = breakdown ? 0 : Math.exp(-ph * 9);
+    const hph = ((t + beat / 2) % beat) / beat;
+    A.kick = k;
+    A.bass = breakdown ? 0.15 : 0.45 + 0.4 * Math.exp(-ph * 4) * (bar % 4 === 3 ? 0.6 : 1);
+    A.mid = 0.45 + 0.3 * Math.sin(t * 0.9) * Math.sin(t * 0.37) + 0.15 * Math.sin(t * 5.1);
+    A.high = breakdown ? 0.2 : 0.25 + 0.6 * Math.exp(-hph * 14);
+    // smoothing: rise instantly, fall slower with more smoothing
+    const fall = 1 / (0.08 * S.smoothing * S.smoothing + 0.02);
+    A.env = Math.max(k, A.env - (1 / 60) * fall * A.env);
+  }
+
+  // ---------- Main picture: Minimal / Flächen / Glas approximation ----------
+  const cv = $('#viz'), cx = cv.getContext('2d');
+  let W = 0, H = 0;
+  function resize() {
+    const r = cv.getBoundingClientRect();
+    W = cv.width = Math.max(320, Math.round(r.width * 0.6));
+    H = cv.height = Math.max(200, Math.round(r.height * 0.6));
+    cx.fillStyle = '#05040a'; cx.fillRect(0, 0, W, H);
+  }
+  new ResizeObserver(resize).observe(cv);
+
+  function hexA(h, a) {
+    const n = parseInt(h.slice(1), 16);
+    return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
+  }
+  function blobs(ctx, w, h, t, o) {
+    const c = o.cols, n = o.count || 6;
+    const r0 = Math.min(w, h) * 0.32 * o.size;
+    for (let i = 0; i < n; i++) {
+      const a = i * 2.399 + t * 0.13 * (1 + i * 0.07);
+      const x = w * (0.5 + 0.34 * Math.sin(a + Math.sin(t * 0.21 + i) * 0.8 * o.form));
+      const y = h * (0.5 + 0.3 * Math.cos(a * 1.3 + Math.cos(t * 0.17 + i * 2) * 0.8 * o.form));
+      const pulse = 1 + o.bass * 0.35 + o.kick * 0.22;
+      const rx = r0 * pulse * (1 + 0.25 * o.form * Math.sin(t * 0.7 + i));
+      const ry = r0 * pulse * (1 - 0.2 * o.form * Math.sin(t * 0.5 + i * 1.7));
+      ctx.save();
+      ctx.translate(x, y); ctx.rotate(t * 0.1 * o.form + i); ctx.scale(1, ry / rx);
+      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, rx);
+      const col = c[i % c.length];
+      if (o.style === 'flat') { g.addColorStop(0, hexA(col, 0.95)); g.addColorStop(0.75, hexA(col, 0.6)); g.addColorStop(1, hexA(col, 0)); }
+      else { g.addColorStop(0, hexA(col, 0.85)); g.addColorStop(0.5, hexA(col, 0.35)); g.addColorStop(1, hexA(col, 0)); }
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(0, 0, rx, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+    if (o.style === 'glass') { // highlights like light on glass
+      ctx.globalCompositeOperation = 'screen';
+      for (let i = 0; i < 3; i++) {
+        const x = w * (0.3 + 0.4 * Math.sin(t * 0.2 + i * 2)), y = h * (0.35 + 0.3 * Math.cos(t * 0.23 + i));
+        const g = ctx.createRadialGradient(x - 8, y - 8, 0, x, y, r0 * 0.5);
+        g.addColorStop(0, `rgba(255,255,255,${0.25 + o.high * 0.25})`); g.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+      }
+    }
+    if (o.high > 0.05) { // sparkles from highs
+      ctx.globalCompositeOperation = 'lighter';
+      const k = Math.floor(o.high * 14);
+      for (let i = 0; i < k; i++) {
+        const s = Math.sin(i * 91.7 + Math.floor(t * 8) * 13.1) * 43758.5;
+        const fx = s - Math.floor(s), s2 = Math.sin(i * 12.9 + Math.floor(t * 8) * 7.3) * 23421.6, fy = s2 - Math.floor(s2);
+        ctx.fillStyle = `rgba(255,255,255,${0.35 * o.high})`;
+        ctx.beginPath(); ctx.arc(fx * w, fy * h, 1 + o.high * 2, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+  function symmetry(ctx, w, h, mode) {
+    if (mode === 'off') return;
+    ctx.save();
+    ctx.translate(w, 0); ctx.scale(-1, 1);
+    ctx.drawImage(ctx.canvas, 0, 0, w / 2, h, 0, 0, w / 2, h);
+    ctx.restore();
+    if (mode === 'quad' || mode === 'kaleido') {
+      ctx.save(); ctx.translate(0, h); ctx.scale(1, -1);
+      ctx.drawImage(ctx.canvas, 0, 0, w, h / 2, 0, 0, w, h / 2);
+      ctx.restore();
+    }
+  }
+
+  let last = performance.now(), simT = 0, flashT = 0, lastKick = 0;
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    A.t += dt; audio(A.t);
+    const R = S.reactivity;
+    simT += dt * S.speed * (1 + A.mid * 0.4 * S.midImpact * R);
+    // trails: how much of the last frame stays
+    const keep = Math.min(0.94, S.trails * 0.78);
+    cx.globalCompositeOperation = 'source-over';
+    cx.fillStyle = `rgba(5,4,10,${1 - keep})`;
+    cx.fillRect(0, 0, W, H);
+    cx.globalCompositeOperation = S.style === 'flat' ? 'source-over' : 'lighter';
+    cx.globalAlpha = S.style === 'flat' ? 0.35 + (1 - keep) * 0.5 : 0.55;
+    blobs(cx, W, H, simT, { cols: cols(), size: S.size, form: S.form * (1 + A.mid * S.midImpact * R * 0.5), bass: A.bass * S.bassImpact * R, kick: A.env * S.beatPulse * R, high: A.high * S.highImpact * R * 0.8, style: S.style });
+    cx.globalAlpha = 1;
+    symmetry(cx, W, H, S.symmetry);
+    cv.style.filter = `saturate(${S.saturation}) brightness(${S.brightness * (0.9 + A.env * 0.15 * S.beatPulse * R)})`;
+
+    // strobe: only on kicks, at most 2 flashes per second (beat is 2.07/s; take every other)
+    if (S.strobe && A.kick > 0.95 && now - lastKick > 900) { flashT = 1; lastKick = now; }
+    flashT = Math.max(0, flashT - dt * 9);
+    $('#flash').style.opacity = String(flashT * 0.55);
+
+    // meters
+    document.querySelectorAll('[data-band]').forEach((b) => {
+      const v = b.dataset.band === 'bass' ? A.bass : b.dataset.band === 'mid' ? A.mid : A.high;
+      b.style.setProperty('--v', Math.max(0, Math.min(1, v)).toFixed(3));
+    });
+
+    drawThumbs(A.t);
+    drawPreviews(A.t);
+    drawLeds(A.t);
+    requestAnimationFrame(frame);
+  }
+
+  // ---------- Thumbnails and mini previews ----------
+  function drawThumbs(t) {
+    thumbs.forEach(({ c, kind, opts }) => {
+      const x = c.getContext('2d');
+      x.globalCompositeOperation = 'source-over';
+      x.fillStyle = '#07060d'; x.fillRect(0, 0, c.width, c.height);
+      let style = S.style, pal = cols(), sym = 'off', size = 1;
+      if (kind === 'style') style = opts.id;
+      if (kind === 'scene') { const p = PALETTES.find((q) => q.id === opts.pal); pal = p.cols; style = opts.v.style || 'minimal'; sym = opts.v.symmetry || 'off'; size = opts.v.size || 1; }
+      if (kind === 'sym') sym = opts.id;
+      x.globalCompositeOperation = style === 'flat' ? 'source-over' : 'lighter';
+      x.globalAlpha = style === 'flat' ? 0.8 : 0.7;
+      blobs(x, c.width, c.height, t * 0.6 + (opts.id || '').length, { cols: pal, size: size * 0.9, form: 1, bass: A.bass * 0.4, kick: A.env * 0.4, high: 0, style, count: 4 });
+      x.globalAlpha = 1;
+      symmetry(x, c.width, c.height, sym);
+    });
+  }
+  function pvBase(x, c) { x.globalCompositeOperation = 'source-over'; x.fillStyle = '#08070e'; x.fillRect(0, 0, c.width, c.height); }
+  function pvKick(x, c, t) {
+    pvBase(x, c);
+    const r = 14 + A.env * 14 * S.beatPulse;
+    const g = x.createRadialGradient(44, 44, 0, 44, 44, r);
+    g.addColorStop(0, cols()[0]); g.addColorStop(1, hexA(cols()[0], 0));
+    x.fillStyle = g; x.beginPath(); x.arc(44, 44, r, 0, 7); x.fill();
+  }
+  function pvSmooth(x, c) {
+    pvBase(x, c);
+    x.strokeStyle = 'rgba(255,255,255,0.18)'; x.lineWidth = 1;
+    x.beginPath(); x.moveTo(8, 74); x.lineTo(80, 74); x.stroke();
+    const tau = 0.08 * S.smoothing * S.smoothing + 0.02;
+    x.strokeStyle = cols()[1]; x.lineWidth = 3; x.lineCap = 'round';
+    x.beginPath(); x.moveTo(10, 74); x.lineTo(14, 16);
+    for (let i = 0; i <= 60; i++) { const px = 14 + i; const tt = i / 60 * 0.45; x.lineTo(px, 74 - 58 * Math.exp(-tt / tau)); }
+    x.stroke();
+    // where are we in the current beat
+    const ph = (A.t % beat) / beat * 0.45 / 0.45;
+    const px = 14 + Math.min(60, ph * 60 * (beat / 0.45));
+    x.fillStyle = '#fff'; x.beginPath(); x.arc(Math.min(74, px), 74 - 58 * A.env, 3, 0, 7); x.fill();
+  }
+  const trailHist = [];
+  function pvTrails(x, c, t) {
+    const keep = Math.min(0.94, S.trails * 0.78);
+    x.globalCompositeOperation = 'source-over';
+    x.fillStyle = `rgba(8,7,14,${1 - keep})`; x.fillRect(0, 0, c.width, c.height);
+    const px = 44 + Math.sin(t * 3.2) * 26, py = 44 + Math.cos(t * 2.1) * 20;
+    x.globalCompositeOperation = 'lighter';
+    const g = x.createRadialGradient(px, py, 0, px, py, 12);
+    g.addColorStop(0, cols()[1]); g.addColorStop(1, hexA(cols()[1], 0));
+    x.fillStyle = g; x.beginPath(); x.arc(px, py, 12, 0, 7); x.fill();
+  }
+  function pvSize(x, c) {
+    pvBase(x, c);
+    const r = 8 + 20 * (S.size - 0.5) / 1.5 + A.bass * 4;
+    const g = x.createRadialGradient(44, 44, 0, 44, 44, r);
+    g.addColorStop(0, cols()[2]); g.addColorStop(1, hexA(cols()[2], 0));
+    x.fillStyle = g; x.beginPath(); x.arc(44, 44, r, 0, 7); x.fill();
+  }
+  function pvForm(x, c, t) {
+    pvBase(x, c);
+    x.fillStyle = cols()[3];
+    x.beginPath();
+    for (let i = 0; i <= 48; i++) {
+      const a = i / 48 * Math.PI * 2;
+      const r = 22 + S.form * 6 * Math.sin(a * 3 + t * 2) + S.form * 3 * Math.sin(a * 5 - t * 3);
+      const px = 44 + Math.cos(a) * r, py = 44 + Math.sin(a) * r;
+      i ? x.lineTo(px, py) : x.moveTo(px, py);
+    }
+    x.closePath(); x.globalAlpha = 0.85; x.fill(); x.globalAlpha = 1;
+  }
+  function pvSat(x, c) {
+    pvBase(x, c);
+    const p = cols();
+    p.forEach((col, i) => { x.fillStyle = col; x.fillRect(8 + i * 15, 18, 13, 52); });
+    c.style.filter = `saturate(${S.saturation})`;
+  }
+  function pvSpeed(x, c, t) {
+    pvBase(x, c);
+    x.strokeStyle = cols()[0]; x.lineWidth = 3; x.lineCap = 'round';
+    x.beginPath();
+    for (let i = 0; i <= 80; i++) { const px = 4 + i; const py = 44 + Math.sin(i * 0.12 + t * 4 * S.speed) * 18; i ? x.lineTo(px, py) : x.moveTo(px, py); }
+    x.stroke();
+  }
+  function drawPreviews(t) { previews.forEach(({ c, draw }) => draw(c.getContext('2d'), c, t)); }
+  function drawLeds(t) {
+    const leds = document.getElementById('leds');
+    if (!leds) return;
+    const p = cols();
+    [...leds.children].forEach((d, i) => {
+      if (!S.lights) { d.style.setProperty('--c', '#1a1a22'); return; }
+      const idx = Math.floor(((i / 24) * S.lightSpread * p.length + t * 0.3) % p.length);
+      const n = parseInt(p[idx].slice(1), 16);
+      const bright = 0.45 + 0.55 * Math.max(A.env, A.bass * 0.6);
+      d.style.setProperty('--c', `rgb(${(n >> 16) * bright | 0},${((n >> 8) & 255) * bright | 0},${(n & 255) * bright | 0})`);
+    });
+  }
+
+  // ---------- Displacement map for the lens refraction ----------
+  // R/G encode how far a pixel is pushed in x/y; strong only near the edges, like a glass lens.
+  (function lensMap() {
+    const w = 256, h = 256, c = document.createElement('canvas'); c.width = w; c.height = h;
+    const x = c.getContext('2d'), img = x.createImageData(w, h);
+    const edge = 0.16;
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+      const u = i / (w - 1), v = j / (h - 1);
+      const dx = u < edge ? (edge - u) / edge : u > 1 - edge ? -(u - (1 - edge)) / edge : 0;
+      const dy = v < edge ? (edge - v) / edge : v > 1 - edge ? -(v - (1 - edge)) / edge : 0;
+      const k = (i + j * w) * 4;
+      img.data[k] = 128 + Math.round(127 * dx * dx * Math.sign(dx));
+      img.data[k + 1] = 128 + Math.round(127 * dy * dy * Math.sign(dy));
+      img.data[k + 2] = 128; img.data[k + 3] = 255;
+    }
+    x.putImageData(img, 0, 0);
+    document.getElementById('lensMap').setAttribute('href', c.toDataURL());
+  })();
+
+  renderPanel();
+  syncStrobe();
+  requestAnimationFrame(frame);
+})();
+</script>

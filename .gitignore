@@ -23,7 +23,7 @@ dist-ssr
 *.sln
 *.sw?
 .agents
-skills
+/skills
 docs
 # Desktop builds
 release
