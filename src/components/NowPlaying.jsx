@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Play, Pause, SkipBack, SkipForward, Music } from 'lucide-react';
+import LiquidGlass from './LiquidGlass';
 import { mediaStore, useStore, setSetting } from '../state/store';
 import { mediaCommand, mediaSupported } from '../media/nowPlaying';
 import { COVER_PALETTE } from '../state/palettes';
@@ -41,27 +42,37 @@ export default function NowPlaying({ mode, idle, uiHandlers }) {
   } : undefined;
 
   return (
-    <section className={`now-playing${visible ? ' show' : ''}`} style={style} aria-label="Läuft gerade" aria-hidden={!visible} inert={!visible}>
-      {m.cover ? <img className="np-cover" src={m.cover} alt="" /> : <span className="np-cover empty"><Music size={26} /></span>}
+    <LiquidGlass
+      as="section"
+      className={`now-playing${visible ? ' show' : ''}`}
+      surface="clear"
+      radius={24}
+      refract={visible}
+      style={style}
+      aria-label="Läuft gerade"
+      aria-hidden={!visible}
+      inert={!visible}
+    >
+      {m.cover ? <img className="np-cover" src={m.cover} alt="" /> : <span className="np-cover empty"><Music size={26} aria-hidden="true" /></span>}
       <div className="np-body">
         <b className="np-title" title={m.title}>{m.title}</b>
         {m.artist && <span className="np-artist" title={m.artist}>{m.artist}</span>}
         <small className="np-app">{m.app}{m.status === 'paused' ? ' · pausiert' : ''}</small>
         <div className="np-controls ui" {...uiHandlers}>
-          <button type="button" className="icon-btn" disabled={!m.canPrev} onClick={() => mediaCommand('previous')} aria-label="Vorheriger Song" title="Vorheriger Song">
-            <SkipBack size={15} />
+          <button type="button" className="lg-btn round" disabled={!m.canPrev} onClick={() => mediaCommand('previous')} aria-label="Vorheriger Song" title="Vorheriger Song">
+            <SkipBack size={15} aria-hidden="true" />
           </button>
-          <button type="button" className="icon-btn np-play" disabled={!m.canPlayPause} onClick={() => mediaCommand('play-pause')}
+          <button type="button" className="lg-btn round on-glass np-play" disabled={!m.canPlayPause} onClick={() => mediaCommand('play-pause')}
             aria-label={playing ? 'Pause' : 'Abspielen'} title={playing ? 'Pause' : 'Abspielen'}>
-            {playing ? <Pause size={16} /> : <Play size={16} />}
+            {playing ? <Pause size={16} aria-hidden="true" /> : <Play size={16} aria-hidden="true" />}
           </button>
-          <button type="button" className="icon-btn" disabled={!m.canNext} onClick={() => mediaCommand('next')} aria-label="Nächster Song" title="Nächster Song">
-            <SkipForward size={15} />
+          <button type="button" className="lg-btn round" disabled={!m.canNext} onClick={() => mediaCommand('next')} aria-label="Nächster Song" title="Nächster Song">
+            <SkipForward size={15} aria-hidden="true" />
           </button>
         </div>
       </div>
       {cols.length > 0 && <span className="np-strip" aria-hidden="true" />}
-    </section>
+    </LiquidGlass>
   );
 }
 

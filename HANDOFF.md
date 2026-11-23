@@ -15,6 +15,23 @@ Format:
 
 ---
 
+## 2026-11-23 · Gemini (Antigravity Swarm) · main + feat/liquid-glass-ui
+
+**Geändert (`main`, Commit `7bef3e5`):** `origin/claude/project-thread-y9iola` (`82defae`, Takt-Uhr & Takt-Ansicht) per Fast-Forward in `main` gemergt; gemeinsamen Agenten-Kontext (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `HANDOFF.md`, `.agent/rules/agents-md.md`), Skill `.agent/skills/govee-lights/SKILL.md`, `design/liquid-glass/` und `.gitignore` (`/skills`) committet und nach `origin/main` gepusht.
+
+**Geändert (`feat/liquid-glass-ui`):** Vollständiger Apple-Liquid-Glass-Umbau + 5-Tab-Einstellungen umgesetzt:
+- `src/components/LiquidGlass.jsx`: Verallgemeinerte Rounded-Rect-SDF-Lichtbrechung mit 3-Kanal-RGB-Split (`backdrop-filter: url()`), 2×-HiDPI-Spekularrand und LRU-Cache, ohne `mix-blend-mode`.
+- `src/components/controls.jsx`: Gleitende Glastropfen (`Segmented` inkl. Tabs), `Range` mit Peek-Modus & kompakten inline Bandmetern, `Toggle`, `Select`, `ColorField`, `Meter`, `BeatView` & `BeatPanel` in Liquid Glass.
+- `src/components/LivePreviews.jsx`: Live-Canvas-Thumbnails (`SceneThumb`, `StyleThumb`, `SymmetryThumb`), Regler-Livevorschauen (`SettingPreview`) und 24-LED-Vorschau (`LedStripPreview`) mit pausierendem Sammel-RAF.
+- `src/components/SettingsPanel.jsx`, `src/App.jsx`, `src/components/NowPlaying.jsx`, `src/styles.css`: 100 % der Einstellungen in 5 Tabs (Bild, Reaktion, Effekte, Licht, System) + persistente Szenenleiste, Fachregler unter „Mehr“, natives `<dialog>`-StartWarning, Paletten-Synchronisation (`--pal-1`/`--pal-2`) ohne blaues `#4cc3ff`.
+- Verifiziert: `npm run lint`, `npm run build`, Kern-/Takt-/Analyse-/Systemaudio-/Windows-Media-Tests grün, Latenz unverändert (`<= 31 ms`), 3-stufige Live-QA in Chromium 146 bestanden.
+
+**Offen:**
+- Fabians Praxistest & visuelles Feedback auf `feat/liquid-glass-ui` in Electron (`Start.bat`).
+- Takt & Latenz: Feedback mit echten Songs steht weiter aus (`AGENTS.md` → Latenz).
+- Optional: Windows-Kompatibilität für 2 vorbestehende Linux-Tests nachrüsten (`scripts/test-lights.mjs` Timer-Auflösung & `scripts/test-media.mjs` POSIX-Shebangs; CI läuft auf `ubuntu-latest`).
+- Später: eigenes Szenen-System (anlegen, speichern, bearbeiten) ausbauen.
+
 ## 2026-11-23 · Claude · Arbeitsordner auf `claude/project-thread-y9iola`, nicht committet
 
 **Geändert:** Gemeinsamen Agenten-Kontext angelegt: `AGENTS.md` (Regeln,

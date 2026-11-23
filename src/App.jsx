@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Settings, Maximize2, EyeOff, Zap, Play, RotateCw } from 'lucide-react';
+import LiquidGlass from './components/LiquidGlass';
 import Visualizer from './components/Visualizer';
 import SettingsPanel from './components/SettingsPanel';
 import NowPlaying, { CoverSwatch } from './components/NowPlaying';
 import { Segmented, Meter, BeatView, BeatPanel } from './components/controls';
 import { STYLES } from './state/settings';
-import { PALETTES, CUSTOM_PALETTE, COVER_PALETTE } from './state/palettes';
-import { settingsStore, audioStore, liveStore, useSettings, useStore, setSetting } from './state/store';
+import { PALETTES, CUSTOM_PALETTE, COVER_PALETTE, paletteColors } from './state/palettes';
+import { settingsStore, audioStore, liveStore, mediaStore, useSettings, useStore, setSetting } from './state/store';
 import { mediaSupported, startNowPlaying, stopNowPlaying } from './media/nowPlaying';
 import { startSource } from './audio/controller';
 import { desktopBridge } from './audio/capture';
@@ -26,35 +27,45 @@ function SourceStatus() {
   const audio = useStore(audioStore);
   const live = useStore(liveStore);
   if (audio.state === 'needs-gesture') {
-    return <button type="button" className="status-btn" onClick={() => startSource(settingsStore.get().source, { userGesture: true })}><Play size={14} /> Desktop-Audio starten</button>;
+    return (
+      <button type="button" className="lg-btn primary status-btn" onClick={() => startSource(settingsStore.get().source, { userGesture: true })}>
+        <Play size={14} aria-hidden="true" /> Desktop-Audio starten
+      </button>
+    );
   }
   if (audio.state === 'error') {
-    return <button type="button" className="status-btn error" title={audio.message} onClick={() => startSource(settingsStore.get().source, { userGesture: true })}><RotateCw size={14} /> Erneut verbinden</button>;
+    return (
+      <button type="button" className="lg-btn status-btn error" title={audio.message} onClick={() => startSource(settingsStore.get().source, { userGesture: true })}>
+        <RotateCw size={14} aria-hidden="true" /> Erneut verbinden
+      </button>
+    );
   }
   let cls = 'live', text = audio.label || 'Audio';
   if (audio.state === 'starting') { cls = 'wait'; text = 'Verbinde …'; }
   else if (audio.state === 'live' && live.silent) { cls = 'silent'; text = `${audio.label} · keine Musik`; }
-  return <span className={`status ${cls}`} role="status"><span className="dot" />{text}</span>;
+  return <span className={`status ${cls}`} role="status" title={text}><span className="dot" aria-hidden="true" /><span className="status-text">{text}</span></span>;
 }
 
-function Hud({ s }) {
+function Hud({ s, uiHandlers }) {
   const live = useStore(liveStore);
   return (
     <div className="hud ui">
       <div className="brand"><b>VibSync</b></div>
       <div className="mood-row">
-        <span className="mood">{live.mood}</span>
-        <BeatView open={s.beatPanel} onClick={() => setSetting('beatPanel', !s.beatPanel)} />
-        {live.drop && <span className="drop">Drop</span>}
-        {s.source === 'demo' && live.section && <span className="section">Testsignal · {live.section}</span>}
+        <LiquidGlass as="span" className="chip-mood" surface="clear" radius="pill" refract>{live.mood}</LiquidGlass>
+        <BeatView open={s.beatPanel} onClick={() => setSetting('beatPanel', !s.beatPanel)} uiHandlers={uiHandlers} />
+        {live.drop && <span className="chip-drop">Drop</span>}
+        {s.source === 'demo' && live.section && (
+          <LiquidGlass as="span" className="chip-section" surface="clear" radius="pill" refract>Testsignal · {live.section}</LiquidGlass>
+        )}
       </div>
       {s.showHud && (
-        <div className="meters">
+        <LiquidGlass className="meters" surface="clear" radius={20} refract>
           <Meter label="Bass" band="bass" />
           <Meter label="Mitte" band="mid" />
           <Meter label="Höhen" band="high" />
           <Meter label="Drive" band="drive" />
-        </div>
+        </LiquidGlass>
       )}
     </div>
   );
@@ -64,22 +75,22 @@ function Notice() {
   const audio = useStore(audioStore);
   if (audio.state === 'needs-gesture') {
     return (
-      <div className="notice">
+      <LiquidGlass className="notice" surface="dense" radius={26} refract>
         <h1>Desktop-Ton verbinden</h1>
         <p>Im Browser muss Chrome einmal fragen. Wähle im Dialog <b>Gesamter Bildschirm</b> und setze das Häkchen bei <b>Systemaudio teilen</b>. Das Bild selbst wird nicht aufgenommen.</p>
-        <button type="button" className="primary" onClick={() => startSource(settingsStore.get().source, { userGesture: true })}>Desktop-Audio starten</button>
+        <button type="button" className="lg-btn primary" onClick={() => startSource(settingsStore.get().source, { userGesture: true })}>Desktop-Audio starten</button>
         <button type="button" className="text-btn" onClick={() => setSetting('source', 'demo')}>Erst mal mit Testsignal ansehen</button>
-      </div>
+      </LiquidGlass>
     );
   }
   if (audio.state === 'error') {
     return (
-      <div className="notice">
+      <LiquidGlass className="notice" surface="dense" radius={26} refract>
         <h1>Kein Ton verbunden</h1>
         <p>{audio.message}</p>
-        <button type="button" className="primary" onClick={() => startSource(settingsStore.get().source, { userGesture: true })}>Erneut versuchen</button>
+        <button type="button" className="lg-btn primary" onClick={() => startSource(settingsStore.get().source, { userGesture: true })}>Erneut versuchen</button>
         <button type="button" className="text-btn" onClick={() => setSetting('source', 'demo')}>Testsignal nutzen</button>
-      </div>
+      </LiquidGlass>
     );
   }
   return null;
@@ -90,29 +101,60 @@ function Notice() {
 function StartWarning() {
   const [open, setOpen] = useState(() => settingsStore.get().startWarning);
   const [hide, setHide] = useState(false);
+  const dialogRef = useRef(null);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog || !open) return;
+    if (!dialog.open) dialog.showModal();
+  }, [open]);
+
   if (!open) return null;
-  const close = () => { if (hide) setSetting('startWarning', false); setOpen(false); };
+
+  const handleClose = () => {
+    if (hide) setSetting('startWarning', false);
+    setOpen(false);
+  };
+
+  const close = () => {
+    const dialog = dialogRef.current;
+    if (dialog?.open) dialog.close();
+    else handleClose();
+  };
+
   return (
-    <div className="warning-backdrop">
-      <div className="notice warning" role="alertdialog" aria-modal="true" aria-labelledby="warn-title" aria-describedby="warn-text">
+    <dialog ref={dialogRef} className="lg-dialog" aria-labelledby="warn-title" aria-describedby="warn-text" onClose={handleClose}>
+      <LiquidGlass className="notice warning" surface="dense" radius={26} refract>
         <h1 id="warn-title">Achtung: Lichtblitze</h1>
-        <p id="warn-text">VibSync kann schnelle Lichtblitze und flackerndes Licht erzeugen, auf dem Bildschirm und auf angeschlossenen Lichtern. Bei Menschen mit lichtempfindlicher Epilepsie können solche Blitze Anfälle auslösen. Ist jemand im Raum betroffen, lass den Strobe aus oder schalte unter Einstellungen → Drops &amp; Strobe die Sicherheitsgrenze ein.</p>
+        <p id="warn-text">VibSync kann schnelle Lichtblitze und flackerndes Licht erzeugen, auf dem Bildschirm und auf angeschlossenen Lichtern. Bei Menschen mit lichtempfindlicher Epilepsie können solche Blitze Anfälle auslösen. Ist jemand im Raum betroffen, lass den Strobe aus oder schalte unter Einstellungen → Effekte die Sicherheitsgrenze ein.</p>
         <label className="check"><input type="checkbox" checked={hide} onChange={(e) => setHide(e.target.checked)} /> Beim Start nicht mehr anzeigen</label>
-        <button type="button" className="primary" autoFocus onClick={close}>Verstanden</button>
-      </div>
-    </div>
+        <button type="button" className="lg-btn primary" autoFocus onClick={close}>Verstanden</button>
+      </LiquidGlass>
+    </dialog>
   );
 }
 
 export default function App() {
   const s = useSettings();
   const live = useStore(liveStore);
+  const media = useStore(mediaStore);
   const [panel, setPanel] = useState(false);
   const [idle, setIdle] = useState(false);
   const timer = useRef(0);
   const overUi = useRef(false);
   const panelRef = useRef(panel);
   useEffect(() => { panelRef.current = panel; }, [panel]);
+
+  // Sync active palette (including album-cover colors) to :root so meters and slider fills harmonize.
+  useEffect(() => {
+    const cols = s.palette === COVER_PALETTE && Array.isArray(media.colors) && media.colors.length >= 3
+      ? media.colors
+      : paletteColors({ palette: s.palette, customColors: s.customColors });
+    const root = document.documentElement.style;
+    root.setProperty('--pal-1', cols[1] || cols[0] || '#00e5ff');
+    root.setProperty('--pal-2', cols[0] || '#ff2bd6');
+    root.setProperty('--pal-3', cols[2] || cols[0] || '#6a00ff');
+  }, [s.palette, s.customColors, media.colors]);
 
   // Start (or switch) the audio source whenever the setting changes.
   useEffect(() => { startSource(s.source); }, [s.source]);
@@ -190,17 +232,17 @@ export default function App() {
   return (
     <div className={`app${idle ? ' idle' : ''}${panel ? ' panel-open' : ''}`}>
       <Visualizer />
-      <Hud s={s} />
-      {s.beatPanel && <BeatPanel onClose={() => setSetting('beatPanel', false)} />}
+      <Hud s={s} uiHandlers={uiHandlers} />
+      {s.beatPanel && <BeatPanel onClose={() => setSetting('beatPanel', false)} uiHandlers={uiHandlers} />}
       <div className="top-right">
         {s.showFps && <div className="fps">{live.fps} FPS{softwareGl ? ' · Grafik ohne GPU' : ''}</div>}
         {mediaSupported && <NowPlaying mode={s.nowPlaying} idle={idle} uiHandlers={uiHandlers} />}
       </div>
       <Notice />
       <StartWarning />
-      <div className="dock ui" {...uiHandlers}>
+      <LiquidGlass as="nav" className="dock ui" surface="clear" radius="pill" refract aria-label="Schnellleiste" {...uiHandlers}>
         <SourceStatus />
-        <span className="sep" aria-hidden="true" />
+        <span className="vsep" aria-hidden="true" />
         <Segmented compact label="Stil" value={s.style} options={STYLES} onChange={(v) => setSetting('style', v)} />
         <div className="swatches" role="group" aria-label="Farbpalette">
           {PALETTES.map((p) => (
@@ -210,15 +252,24 @@ export default function App() {
           ))}
           <CoverSwatch s={s} />
         </div>
-        <span className="spacer" />
-        <button type="button" className={`strobe${s.strobe ? ' on' : ''}`} aria-pressed={s.strobe} onClick={() => setSetting('strobe', !s.strobe)}
+        <span className="vsep" aria-hidden="true" />
+        <button type="button" className={`lg-btn${s.strobe ? ' on-hot' : ''}`} aria-pressed={s.strobe}
+          onClick={() => setSetting('strobe', !s.strobe)}
           title="Lichtblitze, standardmäßig nur während eines Drops">
-          <Zap size={15} /> Strobe
+          <Zap size={15} aria-hidden="true" /> Strobe
         </button>
-        <button type="button" aria-pressed={panel} onClick={() => setPanel((p) => !p)}><Settings size={15} /> Einstellungen</button>
-        <button type="button" className="icon-btn" onClick={toggleFullscreen} aria-label="Vollbild" title="Vollbild (F)"><Maximize2 size={16} /></button>
-        <button type="button" className="icon-btn" onClick={(e) => { e.stopPropagation(); setPanel(false); setIdle(true); }} aria-label="Menü ausblenden" title="Menü ausblenden (H)"><EyeOff size={16} /></button>
-      </div>
+        <button type="button" className={`lg-btn${panel ? ' on-glass' : ''}`} aria-pressed={panel}
+          onClick={() => { setPanel((p) => !p); wake(); }}>
+          <Settings size={15} aria-hidden="true" /> Einstellungen
+        </button>
+        <button type="button" className="lg-btn round" onClick={toggleFullscreen} aria-label="Vollbild" title="Vollbild (F)">
+          <Maximize2 size={16} aria-hidden="true" />
+        </button>
+        <button type="button" className="lg-btn round" onClick={(e) => { e.stopPropagation(); setPanel(false); setIdle(true); }}
+          aria-label="Menü ausblenden" title="Menü ausblenden (H)">
+          <EyeOff size={16} aria-hidden="true" />
+        </button>
+      </LiquidGlass>
       <div {...uiHandlers}>
         <SettingsPanel open={panel} onClose={() => setPanel(false)} />
       </div>

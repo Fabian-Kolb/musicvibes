@@ -40,7 +40,7 @@ Starten, Tests, Installer und Ordnerübersicht: siehe [`README.md`](README.md)
 | Audio-Engine (Auto-Pegel, Kicks, Drive, Drops), Takt (`beatTracker.js`), Testsignal | `src/engine/` |
 | Shader, Renderer, Abbildung Musik → Bild (`frame.js`) | `src/render/` |
 | Einstellungen, Szenen, Paletten, Tempo pro Song | `src/state/` |
-| Oberfläche (`SettingsPanel.jsx` mit `SECTIONS`, `Visualizer.jsx`, `NowPlaying.jsx`) | `src/components/`, `src/styles.css` |
+| Oberfläche (`LiquidGlass.jsx`, `LivePreviews.jsx`, `SettingsPanel.jsx`, `controls.jsx`, `Visualizer.jsx`, `NowPlaying.jsx`) | `src/components/`, `src/styles.css` |
 | Tests und Mess-Skripte, `scripts/lib/` emuliert den Browser-Analyser | `scripts/` |
 
 **Achtung, veraltete Doku:** `docs/` und `.agents/skills/`
@@ -65,7 +65,8 @@ Maßgeblich sind `README.md`, der Code und diese Datei.
 - **Linux**: Ton über `parec`/`pw-record` statt Chromium-Loopback (Wayland).
   `pw-record` und echte Electron-Läufe unter Linux sind ungetestet.
 - **Govee-Lichter**: LAN-UDP, Segmentzahl des H619E (Standard 20) ungeprüft.
-  Die Lichter nutzen noch die erkannten Kicks, nicht den Takt.
+  Die Lichter nutzen noch die erkannten Kicks, nicht den Takt. Protokoll- und
+  OpenAPI-Referenz liegt im Skill `.agent/skills/govee-lights/SKILL.md`.
 
 ## Latenz (Ton → Bild)
 
@@ -94,41 +95,40 @@ Stand 2026-11-07, Branch `claude/project-thread-y9iola`.
 
 ## UI-Redesign (Liquid Glass)
 
-Stand 2026-11-07, **Umsetzung noch nicht begonnen.**
+Stand 2026-11-23, **auf Branch `feat/liquid-glass-ui` umgesetzt** (wartet auf Fabians Test).
 
-- Fabian findet die jetzige Milchglas-Oberfläche „nicht gut“. Ziel: Apple
-  Liquid Glass überall (Vorbild Kontrollzentrum: klares Glas, Hintergrund am
-  Rand gebrochen, heller Rand), auch Auswahlzustände als Glastropfen statt
-  blauem Akzent. Ausnahme: Paletten und Farben bleiben farbig.
-- Abgenommene Richtung: **ein Glas-Button** mit eigener Displacement-Map
-  (Kapsel-SDF, Randabfall, leichte Vergrößerung, RGB-Split) in
-  `backdrop-filter: url()`, nur in Chromium/Electron. Rand als weicher
-  Verlauf (hell an der Kante, nach innen 3–10 px auslaufend, oben links stark,
-  unten rechts schwächer) plus weiches Inset-Glow, keine 1-px-Linie.
-- Stolperfallen: ein Geschwister-Element mit `mix-blend-mode` schaltet den
-  `url()`-Backdrop-Filter ab. Auf VibSyncs weichen Wolken sieht man die
-  Brechung kaum; sie braucht Kanten/Details dahinter.
-- Einstellungen: `SettingsPanel.jsx` hat ~60 Regler in 9 Akkordeon-Abschnitten,
-  Hinweise nur als Text. Mockup-Vorschlag: 5 Tabs (Bild, Reaktion, Effekte,
-  Licht, System), Szenenkarten mit Vorschaubild oben, „Mehr“ für seltene
-  Regler, Mini-Livevorschau neben Reglern, Panel wird beim Ziehen durchsichtig
-  („Peek“), Bandmeter neben Bass/Mitten/Höhen, A/B-Vergleich.
-- **Offene Fragen an Fabian**: Passt die Tab-Aufteilung? Welche der Ideen
-  (Livevorschau, Peek, A/B, Bandmeter) will er? Womit anfangen (Button-Stil
-  auf die ganze Leiste übertragen oder gleich das Panel)? Das Szenen-System
-  (anlegen, speichern, bearbeiten) soll später ebenfalls neu werden.
-- Mockups zum Ansehen im Browser (Chrome/Edge): `design/liquid-glass/glass-button.html`
-  (abgenommener Button-Stil) und `design/liquid-glass/vibsync-liquid-glass.html`
-  (erstes Panel-Mockup, Glas dort noch „schaut nicht gut aus“, nur Struktur zählt). UI-Änderungen auf
-  `src/components/` und `src/styles.css` beschränken, damit sie nicht mit der
-  Takt-/Bildarbeit kollidieren.
+- Ziel: Apple Liquid Glass überall (Vorbild Kontrollzentrum: klares Glas,
+  Hintergrund am Rand gebrochen, heller Rand), Auswahlzustände als Glastropfen
+  statt blauem `#4cc3ff`-Akzent; Paletten, Cover und Statusfarben bleiben farbig
+  (Regler/Meter folgen `--pal-1`/`--pal-2`).
+- Umsetzung (`src/components/LiquidGlass.jsx`, `controls.jsx`,
+  `LivePreviews.jsx`, `SettingsPanel.jsx`, `NowPlaying.jsx`, `src/App.jsx`,
+  `src/styles.css`):
+  - Verallgemeinerte Rounded-Rect-SDF-Displacement-Map + 3-Kanal-RGB-Split in
+    `backdrop-filter: url()` (nur auf Top-Level-Flächen über dem Canvas) plus
+    2×-Spekularrand (oben links stark, unten rechts weicher, keine 1-px-Linie)
+    und LRU-Cache.
+  - 5-Tab-Einstellungs-Panel (Bild, Reaktion, Effekte, Licht, System) mit
+    persistenter Szenenleiste, Live-Canvas-Thumbnails & Regler-Vorschauen,
+    24-LED-Vorschau, inline Bandmetern, Fachreglern unter „Mehr“, Peek-Modus
+    beim Ziehen von Reglern und nativem `<dialog>`-StartWarning.
+- Stolperfallen: kein `mix-blend-mode` an irgendeinem Element (schaltet den
+  `url()`-Backdrop-Filter in Chromium ab); auf weichen Farbwolken wirkt die
+  Brechung dezenter als über Kanten/Details.
+- **Offen**: Fabians Feedback auf `feat/liquid-glass-ui` in Electron
+  (`Start.bat`); das Szenen-System (anlegen, speichern, bearbeiten) soll später
+  noch weiter ausgebaut werden.
+- Referenz-Mockups: `design/liquid-glass/glass-button.html` (abgenommene
+  Lichtbrechung) und `design/liquid-glass/vibsync-liquid-glass.html`
+  (Struktur-Referenz).
 
 ## Git und Fabians PC
 
 - Repo: `github.com/Fabian-Kolb/musicvibes`, Standard-Branch `main`.
   Lokal: `C:\Users\Fabia\Desktop\Eigene_Projekte\vibe_codeing\musicvibes`.
-- Neueste Arbeit liegt auf `claude/project-thread-y9iola` (noch nicht in
-  `main`). Vor neuer Arbeit `git fetch` und den passenden Branch prüfen.
+- `claude/project-thread-y9iola` (`82defae`) ist in `main` (`7bef3e5`) gemergt.
+  Neueste UI-Arbeit liegt auf `feat/liquid-glass-ui`. Vor neuer Arbeit
+  `git fetch` und den passenden Branch prüfen.
 - Fabian testet einen Branch so: `git checkout <branch>`, `git pull`, dann
   `Start.bat`. Die Desktop-Verknüpfung startet eine alte installierte Version.
 - Updates kommen nur noch per `git pull` auf seinen PC, keine tar-Pakete mehr.
